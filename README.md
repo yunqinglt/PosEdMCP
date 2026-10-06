@@ -417,6 +417,21 @@ into the live process and unhook**, not merely cross out a record — otherwise 
 believes they stopped it while it comes back at the next app start. `hook_clear` works the
 same way: it deletes the saved definition along with the live hook.
 
+**And it works with no live process at all**, which turns out to be the case it is most needed
+for. A hook that crashes its app keeps crashing it, because the app re-arms that hook on every
+start — so the saved definition is the thing that has to go, and removing it needs nothing
+running. The first version of `hook_clear` asked for a reachable process first, like every
+other hook tool, which meant the one operation that could have broken the loop refused in
+exactly the situation that needed it. Someone hit that and had to clear the hook by hand in the
+app. The check is gone; the answer now reports honestly instead — which processes were reached
+(usually none) and which definitions are now gone.
+
+It also takes an **`id`**, which `hook_list` now reports, so one hook can be removed on its own.
+A target string is readable but a *substring* of it is not: on a class carrying eleven ad hooks,
+"delete the one I mean" needs something exact to point at. An id that does not resolve is
+refused outright rather than quietly falling through to the filters, so a stale one cannot turn
+into "everything in this package".
+
 **Lua can hook too.** `app.hook{...}` hands the module a Lua function, which is held on the
 Java side — the script's environment is discarded when it finishes, so that reference is
 the only thing keeping the closure alive — and it is called back on every match. It is the

@@ -1175,42 +1175,105 @@ public final class ToolRegistry {
 
         add(McpTool.of("hook_clear")
                 .title("Remove hooks, for good")
-                .description("Unhooks everything matching in every process of the package, and"
-                        + " removes the saved definitions too, so nothing is re-armed when that"
-                        + " app next starts. Worth doing once you are finished: a watched app"
+                .description("Removes hooks: exactly one by `id`, a subset by `subject`, or every"
+                        + " one of them for the package. In each case it also removes the saved"
+                        + " definitions, so nothing is re-armed when that app next starts. Worth"
+                        + " doing once you are finished: a watched app"
                         + " keeps paying for hooks you no longer read, and a kept hook keeps"
-                        + " working without asking again. Prompts.")
+                        + " working without asking again."
+                        + " \n\nWorks even when that app cannot stay running, which is the case"
+                        + " it exists for. A hook that crashes its app keeps crashing it - the"
+                        + " app arms the hook again on every start - so the saved definition is"
+                        + " what has to go, and removing it needs no live process at all. It is"
+                        + " also the only way to clean up a library entry for an app that is not"
+                        + " running. The answer says which processes were reached and what was"
+                        + " forgotten. Prompts.")
                 .mutating()
                 .input(props(
                         "package", McpTool.string("Target package." + SYSTEM_PACKAGE_HINT),
-                        "subject", McpTool.string("Only hooks whose class or method contains this."
-                                + " Omit to remove all of them."),
+                        "id", McpTool.string("Remove exactly one hook, by the id hook_list shows."
+                                + " This is the precise option, and the one to reach for when only"
+                                + " one of several hooks on the same class should go."),
+                        "subject", McpTool.string("Or remove a subset: only hooks whose class or"
+                                + " method contains this."),
                         "reason", McpTool.string("Why the hooks are being removed. Shown to the user.")),
                         "package", "reason")
                 .handler(args -> {
                     String pkg = require(args, "package");
                     String reason = require(args, "reason");
                     String subject = args.optString("subject", "");
+                    String id = args.optString("id", "");
+                    HookStore store = HookStore.of(context);
+
+                    // One hook, by the library's own identity, when the caller named one.
+                    // Resolved before anything else and refused loudly if it does not
+                    // match, because the alternative - falling through to the subject
+                    // filter - would turn a stale or mistyped id into "everything in this
+                    // package", which is the opposite of what was asked for.
+                    SavedHook one = null;
+                    if (!id.isEmpty()) {
+                        one = store.byId(id);
+                        if (one == null) {
+                            throw new McpTool.ToolError("no kept hook has the id '" + id + "'."
+                                    + " Ids come from hook_list and change when a hook is"
+                                    + " registered again, so read the list rather than reusing an"
+                                    + " old one. Nothing was removed.");
+                        }
+                        if (!one.packageName.equals(pkg)) {
+                            throw new McpTool.ToolError("the hook with id '" + id + "' is kept for "
+                                    + one.packageName + ", not " + pkg + ". Nothing was removed.");
+                        }
+                    }
 
                     requireConfirmation(ConfirmationGate.Kind.PLUGIN,
-                            "Remove hooks from " + pkg,
-                            subject.isEmpty() ? "all hooks in this package"
-                                    : "hooks matching \"" + subject + "\"",
+                            "Remove " + (one == null ? "hooks from " : "a hook from ") + pkg,
+                            one != null
+                                    ? one.target() + (one.effect.isEmpty()
+                                            ? "" : "\n" + one.effect)
+                                    : (subject.isEmpty() ? "all hooks in this package"
+                                            : "hooks matching \"" + subject + "\""),
                             reason);
 
-                    requirePeer(pkg);
+                    // Deliberately no requirePeer here, unlike every other hook tool.
+                    // This is the one operation that has to work when the target cannot
+                    // stay alive, and that is exactly the case it is most needed for: a
+                    // hook that crashes its app keeps crashing it, because the app
+                    // re-arms the hook on every start. Refusing when nothing is
+                    // reachable would leave no way out through the tools at all - which
+                    // is what someone hit, and had to work around by hand in the app.
                     JSONObject call = new JSONObject();
-                    call.put("subject", subject);
+                    // The module unhooks by the runtime identity, class#method; the id is
+                    // the library's own. One hook therefore means sending its key, rather
+                    // than whatever substring a caller would have had to invent.
+                    call.put("subject", one == null
+                            ? subject : one.className + "#" + one.methodName);
                     JSONObject out = summarizeAcrossProcesses(
                             capabilities.appCallAll(pkg, "hook_clear", call, 20_000L),
                             "clearedIn", "Every process of the package was asked.");
 
-                    // Forget the definitions as well. A saved hook re-arms itself,
-                    // so clearing only the process would bring it back the next
-                    // time the app starts - the exact opposite of what was asked.
-                    JSONArray forgotten = forgetHooks(pkg, subject);
+                    // Forget the definitions as well - and here that is the whole point.
+                    // A saved hook re-arms itself, so clearing only the process would
+                    // bring it back the next time the app starts: the exact opposite of
+                    // what was asked, and for a crashing hook a loop with no end.
+                    JSONArray forgotten = new JSONArray();
+                    if (one != null) {
+                        store.delete(one.id);
+                        forgotten.put(one.target());
+                    } else {
+                        forgotten = forgetHooks(pkg, subject);
+                    }
                     out.put("forgottenSavedHooks", forgotten);
-                    if (forgotten.length() > 0) {
+                    if (out.optInt("clearedIn", 0) == 0) {
+                        out.put("note", "No process of that package was reachable, so nothing live"
+                                + " was touched. For a hook that is crashing its app that is not a"
+                                + " problem - there is nothing left running to unhook - and the"
+                                + " part that mattered is done: "
+                                + (forgotten.length() == 0
+                                        ? "no saved definition matched, so nothing changed."
+                                        : forgotten.length() + " saved definition(s) are gone, so"
+                                                + " that hook will not be armed when the app next"
+                                                + " starts."));
+                    } else if (forgotten.length() > 0) {
                         out.put("note", "Also removed from the saved hooks, so it will not come"
                                 + " back when that application restarts.");
                     }

@@ -140,6 +140,10 @@ public final class SavedHook {
     /** What the agent sees when listing: the definition, without the script. */
     public JSONObject describe() throws JSONException {
         JSONObject o = new JSONObject();
+        // The only handle that names one hook and nothing else. A target string is
+        // readable but a substring of it is not - on a class carrying eleven ad
+        // hooks, "delete the one I mean" needs something exact to point at.
+        o.put("id", id);
         o.put("package", packageName);
         o.put("layer", layer);
         o.put("target", target());
