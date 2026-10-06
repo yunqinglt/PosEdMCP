@@ -429,6 +429,82 @@ interrupting), but it **is** recorded and reported by `hook_records` as `bodyErr
 hook that throws on every call otherwise looks exactly like one that matches nothing, and
 that is precisely why this module was rewritten.
 
+## Hooking `system_server`, and the module that gets you out of it
+
+This module deliberately hooked nothing inside `system_server`. Screen capture, input injection
+and foreground tracking all go through public broadcasts and reflective calls into
+`IActivityTaskManager` inside `try/catch`, precisely so a platform change could degrade a
+feature without taking the process down with it — a bootloop caused by a monitoring module
+being a far worse outcome than a missing event.
+
+That held until the point where the agent could not touch `system_server` **at all**, and the
+error it was given made things worse. Three separate things were in the way, and any one of
+them was enough:
+
+1. **It could not be addressed.** A peer from `system_server` registers as role `system`, whose
+   key is the bare word `system`. Every hook tool resolved its target through the
+   `app:<pkg>:<pid>` prefix, so `hook_method` refused at `requirePeer` before anything else
+   happened — and the message it refused with said "add the package to the module's scope",
+   which is advice to do something that had already been done.
+2. **There was nothing there to answer.** `SystemHooks` registered six ops — `status`,
+   `screenshot`, `input`, `foreground`, `ping`, `probe_display` — and no hook ops at all.
+3. **Nothing would put a hook back.** `BridgeServer` fired its peer-ready callback only for
+   role `app`, so the re-arm path that keeps every other hook alive never ran for this one.
+
+The fix is one word wide on the outside and rewrites nothing on the inside. A hook cannot be
+stored without a package to hang it on, so `system_server` is addressed as **`android`** — what
+classic Xposed calls it — and everything that resolves a target now goes through one helper
+that maps that name to the `system` peer. `HookRegistry`, `LuaRuntime` and `MethodInvoker` were
+not touched: they want a `ClassLoader` and nothing else, so registering them on the system
+bridge client is the whole of it.
+
+**The bargain is different here, and the prompt says so.** A kept hook inside `system_server`
+is put back before the user can reach the page that would remove it, which is how a bad hook
+becomes a phone that cannot finish booting. The confirmation dialog for that target is
+therefore longer than any other in the project: what `system_server` is, whether the hook is
+kept, and whether the rescue module below is installed. A `persist=false` hook is still
+allowed while that module has system hooks suspended — it cannot outlive the process, and
+refusing it too would take away the one way left to look at what went wrong.
+
+### `posedmcp-guard`
+
+The way out cannot live in this app, because the app is what may never get to run. It is a
+Magisk module in [`magisk/posedmcp-guard`](magisk/posedmcp-guard), installed with
+[`tools/install-guard.sh`](tools/install-guard.sh) — no zip, because a zip is an installer for
+an installer and `adb` is how everything else here reaches the device.
+
+```
+post-fs-data.sh   counts kernel boots that never finished, before zygote is up
+service.sh        counts system_server restarts - the only way to see a userspace
+                  reboot, since post-fs-data does not re-run for one - and clears
+                  the counters once the device has settled for two minutes
+```
+
+It acts in two stages, and the order is the point:
+
+1. **Suspend, destroying nothing.** The app writes a note in its own external media directory
+   whenever enabled hooks point at `system_server`. The guard reads that note and acts only
+   then, which is how it tells "this device is rebooting because of us" from "this device is
+   rebooting" — with no note it resets its counters and leaves the problem to whoever owns it.
+   With one, it writes a kill-switch (a `persist.` property, plus the same fact as a file) that
+   the app checks **before arming any kept system hook and before showing anyone a dialog**.
+   The hook library is untouched, the reason appears on the Hooks page, and one button lifts it.
+2. **Only if that did not help**, it copies the hook library to
+   `/data/adb/posedmcp-guard/backup/` and moves it aside.
+
+Two decisions inside it were wrong first, and both are worth knowing:
+
+- **A missing `pidof` is not information.** The first version compared the pid it read against
+  the last one it had, so an ordinary reboot — where the pid goes away and comes back — counted
+  as two restarts, and suspended a device that was doing nothing wrong. An empty reading is now
+  ignored; only a changed, present pid counts.
+- **Lifting the suspension is information too.** The user clearing the kill-switch from the
+  Hooks page means the last suspension was not left in place to be tested, so the guard stands
+  back down to stage one instead of escalating to the stage that moves files.
+
+The scripts are checked for CR before they ship. A Magisk script with CRLF endings fails as
+`#!/system/bin/sh<CR>: not found`, at a point in boot where nothing can tell you why.
+
 ## Injecting into the native layer
 
 `app.native` pushes code one level further down: the native code inside the target process.
@@ -798,11 +874,34 @@ Zygisk-LSPosed 1.10.2 (7182):
   `java_init.list` wins and there is no fallback — constructs it the pre-101 way, and runs it
   with the classic hook backend. A scoped app restarted on it is injected again, and `lua_exec`
   inside that app returns its real `AlarmClockApplication` as a Context. Both devices, one APK.
+- **A kept hook inside `system_server`.** On the Xiaomi (Vector 2.2, Android 15): `hook_list`
+  for `android` reports the system peer as running; `hook_method` came back
+  `process: system, hooked: true`; and `hook_records` then showed real calls intercepted there,
+  from `binder:3514_F` and `PowerManagerService` threads. After a reboot, with nobody asking,
+  the hook re-armed itself inside `system_server` and was recording again. Switching it off on
+  the Hooks page unhooked it live — `hook_records` immediately reported nothing — and the guard's
+  marker went with it, which is what stops the rescue module acting on a device whose problem is
+  something else.
+- **`posedmcp-guard`, both stages.** Attribution came first and was tested first: three counted
+  boots with no system hooks on disk made it stand down and reset rather than suspend. With the
+  marker present, stage one set the property and the file, and the app then **refused a kept
+  system hook before showing any dialog** — while still allowing `persist=false`; the Hooks page
+  showed the reason with a Lift button, pressing it cleared the property and the file, and the
+  guard stood back down to stage one. Stage two copied both hook libraries into `backup/` and
+  moved them aside, and the app read the library back intact once it was restored.
 
 ### Not yet verified
 
 - **The new device's failure path.** There is no test that the modern backend reports a missing
   framework, a hook that will not install, or a chain that throws, the way the classic one does.
+
+- **The guard has never broken a real bootloop.** Every branch of it was exercised by running its
+  scripts by hand against induced counters, and one ordinary reboot was watched from end to end —
+  but nobody has yet made the device genuinely fail to finish booting with a bad system hook in
+  place, which is the only way to know the timing works out when it matters.
+- **Only an observing hook has been kept in `system_server`.** The verification used a hook on a
+  method that cannot alter anything. One that *changes* behaviour there has not been run, so
+  "it installs, and it survives a reboot" is established while "a bad one is survivable" is not.
 
 - **The status tab's faulted branch has not been seen on screen.** The state is real — it is
   what prompted this — but this ROM re-binds the service quickly enough that it could not be

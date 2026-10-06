@@ -31,13 +31,20 @@ public final class HookStore {
     private static final String KEY = "saved";
 
     private final SharedPreferences sp;
+    /** Only for {@link HookGuard}, which needs somewhere to keep its note. */
+    private final Context app;
 
-    private HookStore(SharedPreferences sp) {
+    private HookStore(SharedPreferences sp, Context app) {
         this.sp = sp;
+        this.app = app;
     }
 
     public static HookStore of(Context ctx) {
-        return new HookStore(ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE));
+        Context app = ctx.getApplicationContext();
+        return new HookStore(app == null
+                ? ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+                : app.getSharedPreferences(FILE, Context.MODE_PRIVATE),
+                app == null ? ctx : app);
     }
 
     /** Newest first, which is the order the hook page shows them in. */
@@ -211,5 +218,25 @@ public final class HookStore {
         // reads this back on another thread, and a pending write would show it
         // the old definition.
         sp.edit().putString(KEY, array.toString()).commit();
+        noteGuard(hooks);
+    }
+
+    /**
+     * Keeps {@link HookGuard}'s note in step with what was just written.
+     *
+     * <p>Called from here because every path that changes the library goes
+     * through {@link #write}, and the note is a claim about the current state of
+     * it. A stale one would have the rescue module act on a bootloop that has
+     * nothing to do with system hooks, which is the one way this whole mechanism
+     * could make things worse instead of better.
+     */
+    private void noteGuard(List<SavedHook> hooks) {
+        int system = 0;
+        for (SavedHook hook : hooks) {
+            if (hook.enabled && hook.isSystemHook()) {
+                system++;
+            }
+        }
+        HookGuard.noteSystemHooks(app, system);
     }
 }

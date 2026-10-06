@@ -9,6 +9,7 @@ import java.util.List;
 
 import dev.posedmcp.Logx;
 import dev.posedmcp.ipc.BridgeServer;
+import dev.posedmcp.state.HookGuard;
 import dev.posedmcp.state.HookStore;
 import dev.posedmcp.state.SavedHook;
 import dev.posedmcp.xposed.LuaRuntime;
@@ -25,6 +26,12 @@ import dev.posedmcp.xposed.LuaRuntime;
  * <p>So the app holds the definitions and pushes them in whenever one of a
  * package's processes connects. The push has to happen off the accepting thread
  * (see {@link BridgeServer.PeerListener}) or the reply is never read.
+ *
+ * <p>"A package's processes" includes the single one behind
+ * {@link BridgeServer#SYSTEM_PACKAGE}: system_server is never reaped the way an
+ * app is, so a hook there rarely needs putting back - but when it does, it is
+ * because system_server itself restarted, which is exactly when nothing else is
+ * going to do it.
  *
  * <p>The stored rule is already the request body the module expects, which is
  * why re-arming a value hook is a copy rather than a translation - there is no
@@ -44,6 +51,11 @@ public final class HookDeploy {
         HookStore store = HookStore.of(ctx);
         List<SavedHook> hooks = store.armedFor(pkg);
         if (hooks.isEmpty()) {
+            return;
+        }
+        if (SavedHook.isSystem(pkg) && HookGuard.suspended(ctx)) {
+            Logx.w("not re-arming " + hooks.size() + " hook(s) into system_server: the rescue"
+                    + " module has them suspended");
             return;
         }
         int armed = 0;
@@ -98,13 +110,27 @@ public final class HookDeploy {
      * <p>Used when the user turns a hook back on from the app: the page is
      * showing them a switch, and a switch that only takes effect after the next
      * restart would be a lie about the current state.
+     *
+     * <p>A suspended hook is not armed even from here. The suspension exists
+     * because this hook may be the reason the device cannot finish booting, and
+     * a button that quietly overrode it would make it worthless at the moment it
+     * is needed.
      */
-    public static JSONObject applyToAllProcesses(BridgeServer bridge, SavedHook hook,
+    public static JSONObject applyToAllProcesses(Context ctx, BridgeServer bridge, SavedHook hook,
             String moduleApk) {
         JSONObject out = new JSONObject();
         int applied = 0;
         org.json.JSONArray failures = new org.json.JSONArray();
-        for (String peerKey : bridge.appPeerKeys(hook.packageName)) {
+        if (hook.isSystemHook() && HookGuard.suspended(ctx)) {
+            try {
+                out.put("applied", 0);
+                out.put("failures", failures);
+                out.put("suspended", HookGuard.suspension(ctx));
+            } catch (Throwable ignored) {
+            }
+            return out;
+        }
+        for (String peerKey : bridge.peerKeys(hook.packageName)) {
             try {
                 push(bridge, peerKey, hook, moduleApk);
                 applied++;

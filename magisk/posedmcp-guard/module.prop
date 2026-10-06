@@ -1,0 +1,6 @@
+id=posedmcp_guard
+name=PosEdMCP rescue guard
+version=1.0
+versionCode=1
+author=YunQingLT
+description=Breaks a bootloop caused by a kept PosEdMCP hook inside system_server. It counts boots that never finished, and if the app has system hooks on disk it suspends them: first by asking the app to stop arming them, and, if that does not help, by moving the hook library aside. It does nothing on a device that boots normally.

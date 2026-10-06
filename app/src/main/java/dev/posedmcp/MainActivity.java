@@ -53,6 +53,7 @@ import dev.posedmcp.a11y.AccessibilityBridge;
 import dev.posedmcp.a11y.AccessibilityRepair;
 import dev.posedmcp.ipc.BridgeCredentials;
 import dev.posedmcp.mcp.McpTool;
+import dev.posedmcp.state.HookGuard;
 import dev.posedmcp.state.HookStore;
 import dev.posedmcp.state.Prefs;
 import dev.posedmcp.state.SavedHook;
@@ -793,7 +794,7 @@ public class MainActivity extends AppCompatActivity {
         // then let the module inside it connect, which on this device takes
         // longer than it looks - the first attempt at six seconds was not enough.
         for (int i = 0; i < 60; i++) {
-            if (service == null || service.hasAppPeer(pkg)) {
+            if (service == null || service.hasPeer(pkg)) {
                 break;
             }
             try {
@@ -868,6 +869,19 @@ public class MainActivity extends AppCompatActivity {
                 + " it starts - so this page is where you see what is running without asking"
                 + " again, and where you stop it. Switching one off or deleting it reaches into"
                 + " the app that is running now, not just the record."));
+
+        // Stated before the list, because the answer to "why is nothing
+        // happening" may be that the rescue module switched these off.
+        String suspension = HookGuard.suspension(this);
+        if (!suspension.isEmpty()) {
+            hooksContent.addView(hookSuspensionNotice(suspension));
+        } else {
+            hooksContent.addView(caption(HookGuard.guardInstalled()
+                    ? "Rescue module: installed. If a system hook ever stops the device"
+                            + " finishing boot, it suspends them on its own."
+                    : "Rescue module: not installed. Nothing but recovery would stop a system"
+                            + " hook that leaves the phone unable to boot."));
+        }
 
         HookStore store = HookStore.of(this);
         List<String> packages = store.packages();
@@ -989,7 +1003,7 @@ public class MainActivity extends AppCompatActivity {
     private void setHookEnabled(SavedHook hook, boolean enabled) {
         HookStore.of(this).setEnabled(hook.id, enabled);
         McpService service = McpService.instance();
-        if (service == null || !service.isRunning() || !service.hasAppPeer(hook.packageName)) {
+        if (service == null || !service.isRunning() || !service.hasPeer(hook.packageName)) {
             toast(enabled
                     ? "Saved. It will be armed when the app next starts."
                     : "Saved. The app is not running, so there was nothing to stop.");
@@ -1029,7 +1043,7 @@ public class MainActivity extends AppCompatActivity {
                     HookStore.of(this).delete(hook.id);
                     McpService service = McpService.instance();
                     if (service != null && service.isRunning()
-                            && service.hasAppPeer(hook.packageName)) {
+                            && service.hasPeer(hook.packageName)) {
                         new Thread(() -> {
                             try {
                                 service.disarmHook(hook);
@@ -1042,6 +1056,67 @@ public class MainActivity extends AppCompatActivity {
                         renderHooks();
                     }
                 })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    /**
+     * The notice that system hooks have been switched off from outside this app.
+     *
+     * <p>Shown whether or not the list holds a system hook: the reason someone is
+     * on this page may be that something they expected is not running, and this
+     * notice is the only thing that would say so.
+     */
+    private View hookSuspensionNotice(String reason) {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setCardElevation(dp(1));
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardParams.topMargin = dp(12);
+        card.setLayoutParams(cardParams);
+
+        LinearLayout inner = new LinearLayout(this);
+        inner.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(16);
+        inner.setPadding(pad, pad, pad, dp(12));
+
+        TextView heading = title("System hooks are suspended");
+        heading.setTextColor(color(androidx.appcompat.R.attr.colorError));
+        inner.addView(heading);
+        inner.addView(body("The posedmcp-guard rescue module stopped system hooks being armed,"
+                + " because this device failed to finish booting more than once with one in place."
+                + " Nothing is being put into system_server until you lift this; the hooks"
+                + " themselves are still kept and are listed below."));
+        inner.addView(caption(reason));
+
+        LinearLayout actions = row();
+        actions.addView(outlinedButton("Lift the suspension", v -> confirmLiftSuspension()));
+        inner.addView(actions);
+
+        card.addView(inner);
+        return card;
+    }
+
+    /**
+     * Lifting the suspension puts back whatever may have stopped the device
+     * booting, so it is asked about rather than just done - the button is one tap
+     * away from a phone that does not come back.
+     */
+    private void confirmLiftSuspension() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("Lift the suspension?")
+                .setMessage("System hooks will be armed again when system_server next starts. If"
+                        + " one of them is what stopped the phone booting, it may not boot again -"
+                        + " delete that hook first if you are not sure.")
+                .setPositiveButton("Lift it", (dialog, which) -> new Thread(() -> {
+                    String problem = HookGuard.liftSuspension(this);
+                    runOnUiThread(() -> {
+                        toast(problem == null
+                                ? "Lifted. They arm when system_server next restarts."
+                                : problem);
+                        renderHooks();
+                    });
+                }, "posedmcp-lift-suspension").start())
                 .setNegativeButton("Cancel", null)
                 .show();
     }
@@ -1064,6 +1139,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String appLabel(String pkg) {
+        if (SavedHook.isSystem(pkg)) {
+            // It has no application label because it is not an application; left
+            // to the fallback below it would be shown as the bare word "android",
+            // which tells the user nothing about what they are looking at.
+            return "System Framework";
+        }
         try {
             ApplicationInfo info = getPackageManager().getApplicationInfo(pkg, 0);
             String label = String.valueOf(getPackageManager().getApplicationLabel(info));

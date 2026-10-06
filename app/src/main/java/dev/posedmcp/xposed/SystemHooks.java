@@ -17,16 +17,23 @@ import dev.posedmcp.Logx;
 import dev.posedmcp.ipc.BridgeAuth;
 import dev.posedmcp.ipc.BridgeClient;
 import dev.posedmcp.ipc.Wire;
+import dev.posedmcp.state.SavedHook;
 
 /**
  * The module's half inside system_server.
  *
  * <p>It answers the privileged ops the app asks for and pushes device events
- * back. Nothing here hooks a system method: the whole class uses public
- * broadcasts and reflective calls into {@code IActivityTaskManager} inside
- * try/catch, so a platform change can degrade a feature but can never take
- * system_server down with it. A bootloop caused by a monitoring module would be
- * a far worse outcome than a missing event.
+ * back. The parts that were here first hook nothing: screen capture, input
+ * injection and foreground tracking go through public broadcasts and reflective
+ * calls into {@code IActivityTaskManager} inside try/catch, so a platform change
+ * can degrade a feature but can never take system_server down with it.
+ *
+ * <p>The hook and scripting ops below are the opposite bargain, and were added
+ * on purpose rather than by drift. A hook installed here runs in the one process
+ * whose death reboots the device, and a <i>kept</i> hook is put back before the
+ * user can reach the app that would take it off. That is what
+ * {@code magisk/posedmcp-guard} is for, and why the tool that arms one says so
+ * out loud.
  */
 public final class SystemHooks {
 
@@ -34,6 +41,9 @@ public final class SystemHooks {
 
     private static final SystemOps OPS = new SystemOps();
     private static final AtomicBoolean INSTALLED = new AtomicBoolean(false);
+
+    /** system_server's own loader, which is what a hook in here has to resolve against. */
+    private static volatile ClassLoader LOADER;
 
     private static volatile BridgeClient client;
     private static volatile Context systemContext;
@@ -47,6 +57,7 @@ public final class SystemHooks {
         if (!INSTALLED.compareAndSet(false, true)) {
             return;
         }
+        LOADER = systemClassLoader;
         // Off the main thread: system_server is in the middle of starting its
         // services, and resolving the bridge credentials can block.
         Thread t = new Thread(SystemHooks::installBlocking, "posedmcp-system-install");
@@ -66,8 +77,46 @@ public final class SystemHooks {
             bridge.registerHandler("screenshot", args -> screenshot());
             bridge.registerHandler("input", args -> OPS.inject(args));
             bridge.registerHandler("foreground", args -> foreground());
-            bridge.registerHandler("ping", args -> new JSONObject().put("pong", true));
+            bridge.registerHandler("ping", args -> new JSONObject().put("pong", true)
+                    .put("framework", Framework.describe())
+                    .put("hooks", HookRegistry.snapshot().size()));
             bridge.registerHandler("probe_display", args -> OPS.probeDisplay());
+            // The same hook surface an ordinary app gets, on the process that
+            // needed it most. HookRegistry, LuaRuntime and MethodInvoker want
+            // nothing but a ClassLoader and, for the Lua bindings, a Context that
+            // may be null - so registering them here is the whole of it; none of
+            // them is reimplemented for this process.
+            bridge.registerHandler("hook_method", args -> HookRegistry.install(
+                    args.optString("class", ""),
+                    args.optString("method", ""),
+                    args.optString("params", ""),
+                    args.optInt("max_records", 200),
+                    args,
+                    LOADER));
+            bridge.registerHandler("hook_records", args -> HookRegistry.records(
+                    args.optString("subject", ""), args.optInt("limit", 100)));
+            bridge.registerHandler("hook_clear", args -> HookRegistry.clear(
+                    args.optString("subject", "")));
+            bridge.registerHandler("invoke_method", args -> MethodInvoker.invoke(
+                    args.optString("class", ""),
+                    args.optString("method", ""),
+                    args.optString("params", ""),
+                    args.optJSONArray("args"),
+                    args.optString("instance_class", ""),
+                    args.optString("instance_field", ""),
+                    args.optString("instance_method", ""),
+                    LOADER));
+            bridge.registerHandler("lua_exec", args -> {
+                // Only for scripts that reach the native layer; the library is
+                // loaded lazily, not here.
+                NativeRuntime.setModuleApk(args.optString("module_apk", ""));
+                return LuaRuntime.exec(
+                        SavedHook.SYSTEM_PACKAGE,
+                        LOADER,
+                        systemContext(),
+                        args.optString("source", ""),
+                        args.optLong("max_instructions", LuaRuntime.DEFAULT_MAX_INSTRUCTIONS));
+            });
             bridge.start();
             client = bridge;
             Logx.i("system hooks installed in system_server");

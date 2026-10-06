@@ -34,6 +34,7 @@ import dev.posedmcp.root.ConfirmationGate;
 import dev.posedmcp.root.RootShell;
 import dev.posedmcp.state.DeviceStatus;
 import dev.posedmcp.state.EventStore;
+import dev.posedmcp.state.HookGuard;
 import dev.posedmcp.state.HookStore;
 import dev.posedmcp.state.Prefs;
 import dev.posedmcp.state.SavedHook;
@@ -58,6 +59,17 @@ import dev.posedmcp.xposed.LuaRuntime;
 public final class ToolRegistry {
 
     private static final int MAX_PACKAGES = 400;
+
+    /**
+     * How the hook tools spell the one target that is not an application.
+     *
+     * <p>In the descriptions rather than only in the prompt, because an agent
+     * cannot ask for what it does not know exists - and the earlier failure was
+     * exactly that: system_server was reachable by nothing, and nothing said so.
+     */
+    private static final String SYSTEM_PACKAGE_HINT =
+            " Pass \"" + SavedHook.SYSTEM_PACKAGE + "\" for the system framework (system_server),"
+                    + " which is a process rather than an app.";
 
     /**
      * How long to let the display catch up with the approval window closing.
@@ -782,7 +794,7 @@ public final class ToolRegistry {
                             "Class: " + className + "\nDEX size: " + dex.length + " bytes",
                             reason);
 
-                    requireAppPeer(pkg);
+                    requirePeer(pkg);
                     JSONObject callArgs = new JSONObject();
                     callArgs.put("class_name", className);
                     callArgs.put("entry", "");
@@ -823,7 +835,7 @@ public final class ToolRegistry {
                             "Call plugin code in " + pkg,
                             className + "." + method + "(" + argsJson + ")", reason);
 
-                    requireAppPeer(pkg);
+                    requirePeer(pkg);
                     return McpTool.json(capabilities.systemInvokePlugin(pkg, className, method,
                             argsJson));
                 })
@@ -1030,7 +1042,8 @@ public final class ToolRegistry {
                         + " something else - use hook_lua. Always prompts.")
                 .mutating()
                 .input(props(
-                        "package", McpTool.string("Target package whose process should be hooked"),
+                        "package", McpTool.string("Target package whose process should be hooked."
+                                + SYSTEM_PACKAGE_HINT),
                         "class", McpTool.string("Fully qualified class name, e.g. com.example.Foo"),
                         "method", McpTool.string("Method name"),
                         "params", McpTool.string("Comma-separated parameter types to pick one"
@@ -1056,19 +1069,26 @@ public final class ToolRegistry {
                     boolean persist = args.optBoolean("persist", true);
 
                     String effect = describeHookEffect(args);
+                    refuseIfSuspended(pkg, persist);
+                    String kept = persist
+                            ? "\n\nThis hook is kept. " + (SavedHook.isSystem(pkg)
+                                    ? "It is put back every time system_server starts, until you"
+                                            + " take it off the Hooks page."
+                                    : "It will be re-armed automatically every time that"
+                                            + " application starts, until you take it off the Hooks"
+                                            + " page.")
+                            : "";
                     requireConfirmation(ConfirmationGate.Kind.PLUGIN,
-                            effect == null
-                                    ? "Watch a method in " + pkg
-                                    : "Change behaviour in " + pkg,
+                            (effect == null ? "Watch a method in " : "Change behaviour in ")
+                                    + targetName(pkg),
                             className + "." + method
                                     + "(" + args.optString("params", "") + ")"
                                     + (effect == null ? "" : "\n" + effect)
-                                    + (persist ? "\n\nThis hook is kept. It will be re-armed"
-                                            + " automatically every time that application starts,"
-                                            + " until you take it off the Hooks page." : ""),
+                                    + kept
+                                    + systemTargetWarning(pkg, persist),
                             reason);
 
-                    requireAppPeer(pkg);
+                    requirePeer(pkg);
                     JSONObject call = new JSONObject();
                     call.put("class", className);
                     call.put("method", method);
@@ -1114,7 +1134,8 @@ public final class ToolRegistry {
                         + " newest first. Read-only.")
                 .readOnly()
                 .input(props(
-                        "package", McpTool.string("Target package to read from"),
+                        "package", McpTool.string("Target package to read from."
+                                + SYSTEM_PACKAGE_HINT),
                         "subject", McpTool.string("Only hooks whose class or method contains this"),
                         "limit", McpTool.integer("Maximum records, default 100")),
                         "package")
@@ -1161,7 +1182,7 @@ public final class ToolRegistry {
                         + " working without asking again. Prompts.")
                 .mutating()
                 .input(props(
-                        "package", McpTool.string("Target package"),
+                        "package", McpTool.string("Target package." + SYSTEM_PACKAGE_HINT),
                         "subject", McpTool.string("Only hooks whose class or method contains this."
                                 + " Omit to remove all of them."),
                         "reason", McpTool.string("Why the hooks are being removed. Shown to the user.")),
@@ -1177,7 +1198,7 @@ public final class ToolRegistry {
                                     : "hooks matching \"" + subject + "\"",
                             reason);
 
-                    requireAppPeer(pkg);
+                    requirePeer(pkg);
                     JSONObject call = new JSONObject();
                     call.put("subject", subject);
                     JSONObject out = summarizeAcrossProcesses(
@@ -1218,7 +1239,8 @@ public final class ToolRegistry {
                         + " hook. The user can see and remove it on the Hooks page. Prompts.")
                 .mutating()
                 .input(props(
-                        "package", McpTool.string("Target package to register the hook in"),
+                        "package", McpTool.string("Target package to register the hook in."
+                                + SYSTEM_PACKAGE_HINT),
                         "source", McpTool.string("Lua that calls app.hook{...} exactly once"),
                         "reason", McpTool.string("Why this is needed. Shown to the user.")),
                         "package", "source", "reason")
@@ -1227,14 +1249,19 @@ public final class ToolRegistry {
                     String source = require(args, "source");
                     String reason = require(args, "reason");
 
+                    refuseIfSuspended(pkg, true);
                     requireConfirmation(ConfirmationGate.Kind.PLUGIN,
-                            "Register a Lua hook in " + pkg,
-                            source + "\n\nThis hook is kept. It is re-run automatically every time"
-                                    + " that application starts, so it stays in the app until you"
-                                    + " take it off the Hooks page.",
+                            "Register a Lua hook in " + targetName(pkg),
+                            source + "\n\nThis hook is kept. " + (SavedHook.isSystem(pkg)
+                                    ? "It is re-run every time system_server starts, so it stays"
+                                            + " there until you take it off the Hooks page."
+                                    : "It is re-run automatically every time that application"
+                                            + " starts, so it stays in the app until you take it"
+                                            + " off the Hooks page.")
+                                    + systemTargetWarning(pkg, true),
                             reason);
 
-                    requireAppPeer(pkg);
+                    requirePeer(pkg);
                     JSONObject call = new JSONObject();
                     call.put("source", source);
                     call.put("max_instructions", LuaRuntime.DEFAULT_MAX_INSTRUCTIONS);
@@ -1275,7 +1302,8 @@ public final class ToolRegistry {
                         + " happening without asking. Read-only, never prompts.")
                 .readOnly()
                 .input(props(
-                        "package", McpTool.string("Only hooks for this package")))
+                        "package", McpTool.string("Only hooks for this package."
+                                + SYSTEM_PACKAGE_HINT)))
                 .handler(args -> {
                     String pkg = args.optString("package", "");
                     HookStore store = HookStore.of(context);
@@ -1285,7 +1313,7 @@ public final class ToolRegistry {
                     JSONArray hooks = new JSONArray();
                     JSONArray running = new JSONArray();
                     for (String name : packages) {
-                        if (bridge.hasAppPeer(name)) {
+                        if (bridge.hasPeer(name)) {
                             running.put(name);
                         }
                         for (SavedHook hook : store.forPackage(name)) {
@@ -1364,7 +1392,7 @@ public final class ToolRegistry {
                     requireConfirmation(ConfirmationGate.Kind.PLUGIN,
                             "Call into " + pkg + " through its own API", detail.toString(), reason);
 
-                    requireAppPeer(pkg);
+                    requirePeer(pkg);
                     JSONObject call = new JSONObject();
                     call.put("class", className);
                     call.put("method", method);
@@ -1391,7 +1419,7 @@ public final class ToolRegistry {
      * decision themselves, so prompting again would be asking twice.
      */
     public JSONObject runScript(String pkg, String source, long maxInstructions) throws Exception {
-        requireAppPeer(pkg);
+        requirePeer(pkg);
         JSONObject callArgs = new JSONObject();
         callArgs.put("source", source);
         callArgs.put("max_instructions", maxInstructions);
@@ -1461,12 +1489,81 @@ public final class ToolRegistry {
         }
     }
 
-    private void requireAppPeer(String pkg) throws McpTool.ToolError {
-        if (!bridge.hasAppPeer(pkg)) {
-            throw new McpTool.ToolError("no PosEdMCP module inside '" + pkg + "'."
-                    + " Add the package to the module's scope in LSPosed Manager, then start (or"
-                    + " restart) that app so the module can load into its process.");
+    /** The name a prompt gives the target: the framework is not a package to a user. */
+    private static String targetName(String pkg) {
+        return SavedHook.isSystem(pkg) ? "system_server" : pkg;
+    }
+
+    /**
+     * The paragraph a prompt gets when the target is the system framework.
+     *
+     * <p>Only ever shown to the person tapping approve, never in a tool
+     * description: an agent that has not chosen this target should not be nudged
+     * towards it, and whoever has to judge the request should not need to know
+     * that "android" means the system.
+     */
+    private String systemTargetWarning(String pkg, boolean persist) {
+        if (!SavedHook.isSystem(pkg)) {
+            return "";
         }
+        String what = "This is system_server, not an app - the process the whole system runs in."
+                + " A hook that throws here can take it down, and with it everything on screen.";
+        if (!persist) {
+            return "\n\n" + what + " This one is not kept, so restarting the system clears it.";
+        }
+        return "\n\n" + what + " This one IS kept: it is put back before you can open the app that"
+                + " would remove it, which is how a bad hook becomes a phone that cannot finish"
+                + " booting."
+                + (HookGuard.guardInstalled()
+                        ? " The posedmcp-guard module is installed and suspends system hooks by"
+                                + " itself after repeated failed boots."
+                        : " The posedmcp-guard rescue module is NOT installed, so if this goes"
+                                + " wrong there is nothing to fall back on but recovery.");
+    }
+
+    /**
+     * Refuses to <i>keep</i> a hook in system_server while the guard has it suspended.
+     *
+     * <p>Only kept ones. The suspension is about a hook that is put back before
+     * the user can reach the app, which is the shape that can leave a device
+     * unable to boot; a hook that dies with the process cannot do that, and
+     * refusing it too would take away the one way left to look at the thing that
+     * went wrong.
+     */
+    private void refuseIfSuspended(String pkg, boolean persist) throws McpTool.ToolError {
+        if (!persist || !SavedHook.isSystem(pkg) || !HookGuard.suspended(context)) {
+            return;
+        }
+        throw new McpTool.ToolError("kept system hooks are suspended on this device. The"
+                + " posedmcp-guard rescue module switched them off after the device failed to"
+                + " finish booting, and only the user can lift that, on the Hooks page in the"
+                + " app. Its reason: " + HookGuard.suspension(context)
+                + " A persist=false hook is still allowed - it cannot outlive the process.");
+    }
+
+    /**
+     * Fails unless something is connected that can serve an op for this package.
+     *
+     * <p>The two ways to fail have nothing to do with each other and get told
+     * apart, because the old single message actively misled: for
+     * {@link SavedHook#SYSTEM_PACKAGE} it said "add the package to the module's
+     * scope", which is advice to do something that was already done -
+     * system_server is in scope and the module is loaded into it, it simply had
+     * no peer of its own to be addressed by.
+     */
+    private void requirePeer(String pkg) throws McpTool.ToolError {
+        if (bridge.hasPeer(pkg)) {
+            return;
+        }
+        if (SavedHook.isSystem(pkg)) {
+            throw new McpTool.ToolError("the module is not running inside system_server,"
+                    + " so nothing can be hooked there. Give PosEdMCP \"System Framework\" in its"
+                    + " scope in LSPosed Manager, then reboot - restarting system_server alone is"
+                    + " not always enough - and check module_status for a 'system' peer.");
+        }
+        throw new McpTool.ToolError("no PosEdMCP module inside '" + pkg + "'."
+                + " Add the package to the module's scope in LSPosed Manager, then start (or"
+                + " restart) that app so the module can load into its process.");
     }
 
     private JSONObject moduleStatusJson() {
@@ -1572,7 +1669,7 @@ public final class ToolRegistry {
                 entry.put("system", system);
                 entry.put("uid", app.uid);
                 entry.put("enabled", app.enabled);
-                entry.put("moduleLoaded", bridge.hasAppPeer(info.packageName));
+                entry.put("moduleLoaded", bridge.hasPeer(info.packageName));
             } catch (Throwable ignored) {
             }
             array.put(entry);

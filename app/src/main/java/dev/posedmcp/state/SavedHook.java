@@ -19,6 +19,17 @@ import org.json.JSONObject;
  */
 public final class SavedHook {
 
+    /**
+     * The package name that means system_server.
+     *
+     * <p>Not a real package: it is what classic Xposed reports system_server as,
+     * and the first thing {@code Framework.isSystemServer} tests for. A hook
+     * cannot be stored without a package to hang it on, so the tools take this
+     * name for it, and everything that addresses a target resolves it to the
+     * {@code system} bridge peer rather than to any {@code app:} peer.
+     */
+    public static final String SYSTEM_PACKAGE = "android";
+
     /** A Java method hooked through the framework. The only layer there is today. */
     public static final String LAYER_DEX = "dex";
 
@@ -60,6 +71,16 @@ public final class SavedHook {
     /** The method this hook is attached to, as the tools spell it. */
     public String target() {
         return className + "#" + methodName + "(" + params + ")";
+    }
+
+    /** Whether a package name means the system framework rather than an app. */
+    public static boolean isSystem(String packageName) {
+        return SYSTEM_PACKAGE.equals(packageName);
+    }
+
+    /** Whether this hook is aimed at the process the whole system runs in. */
+    public boolean isSystemHook() {
+        return isSystem(packageName);
     }
 
     public static SavedHook fromJson(JSONObject o) {

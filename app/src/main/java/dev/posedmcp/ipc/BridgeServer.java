@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import dev.posedmcp.Logx;
 import dev.posedmcp.state.EventStore;
+import dev.posedmcp.state.SavedHook;
 
 /**
  * Server half of the in-device bridge, running in the app process.
@@ -65,12 +66,16 @@ public final class BridgeServer {
     }
 
     /**
-     * Told when a module process has finished connecting.
+     * Told when a module process has finished connecting, including system_server.
      *
      * <p>Called on a thread of its own, and that is the point: whatever handles
      * this usually sends a request straight back to the peer, and the thread
      * that accepted the connection is about to become that peer's read loop. A
      * request sent from there would wait for a reply nothing was reading.
+     *
+     * <p>The system peer arrives here too, as {@link SavedHook#SYSTEM_PACKAGE}. It
+     * is the process whose hooks are the ones that have to be put back earliest,
+     * so it is the last one that should be left out.
      */
     public interface PeerListener {
         void onPeerReady(String pkg, String peerKey);
@@ -170,8 +175,37 @@ public final class BridgeServer {
         return out;
     }
 
-    public boolean hasAppPeer(String pkg) {
-        return !appPeerKeys(pkg).isEmpty();
+    /**
+     * Every peer that can serve an op for a package.
+     *
+     * <p>The one place the two kinds of peer are told apart, so that everything
+     * which addresses a target - hooks, scripts, plugins - asks one question and
+     * gets the right answer for system_server as well as for an app. Without it
+     * the system peer's key, which is the bare word {@code system} and not an
+     * {@code app:<pkg>:<pid>} key, matches nothing, and the one process worth
+     * hooking most is the one no tool can address.
+     */
+    public List<String> peerKeys(String pkg) {
+        if (isSystem(pkg)) {
+            return systemPeer() == null ? new ArrayList<>() : singleton(Wire.ROLE_SYSTEM);
+        }
+        return appPeerKeys(pkg);
+    }
+
+    private static List<String> singleton(String key) {
+        List<String> out = new ArrayList<>(1);
+        out.add(key);
+        return out;
+    }
+
+    /** Whether {@code pkg} names the system framework rather than an app. */
+    public static boolean isSystem(String pkg) {
+        return SavedHook.isSystem(pkg);
+    }
+
+    /** Whether anything is connected that could serve an op for this package. */
+    public boolean hasPeer(String pkg) {
+        return !peerKeys(pkg).isEmpty();
     }
 
     /**
@@ -182,10 +216,13 @@ public final class BridgeServer {
      * asking only the first one that answers reports "nothing is hooked" while a
      * hook sits in a sibling process, which is exactly the kind of answer that
      * sends someone hunting for a bug that is not there.
+     *
+     * <p>The target may also be {@link SavedHook#SYSTEM_PACKAGE}, which has exactly
+     * one process and answers through the {@code system} peer.
      */
     public JSONArray requestAllProcesses(String pkg, String op, JSONObject args, long timeoutMs) {
         JSONArray results = new JSONArray();
-        for (String key : appPeerKeys(pkg)) {
+        for (String key : peerKeys(pkg)) {
             JSONObject entry = new JSONObject();
             try {
                 entry.put("process", key);
@@ -213,7 +250,7 @@ public final class BridgeServer {
      */
     public JSONObject requestAnyProcess(String pkg, String op, JSONObject args, long timeoutMs)
             throws IOException {
-        List<String> keys = appPeerKeys(pkg);
+        List<String> keys = peerKeys(pkg);
         if (keys.isEmpty()) {
             throw new IOException("no bridge peer connected for '" + pkg + "'");
         }
@@ -329,8 +366,11 @@ public final class BridgeServer {
                     System.currentTimeMillis());
             Logx.i("bridge peer connected: " + key);
 
-            if (peerListener != null && Wire.ROLE_APP.equals(role)) {
-                String readyPkg = pkg;
+            if (peerListener != null) {
+                // The system peer has no package of its own to name - it answers
+                // for whichever system package happened to be loading - so it is
+                // addressed by the one name the hook tools use for it.
+                String readyPkg = Wire.ROLE_APP.equals(role) ? pkg : SavedHook.SYSTEM_PACKAGE;
                 String readyKey = key;
                 Thread t = new Thread(() -> {
                     try {

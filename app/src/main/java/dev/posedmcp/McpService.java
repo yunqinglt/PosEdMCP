@@ -400,10 +400,15 @@ public final class McpService extends Service {
         return registry.runScript(pkg, source, maxInstructions);
     }
 
-    /** Whether a module inside that package is currently reachable over the bridge. */
-    public boolean hasAppPeer(String pkg) {
+    /**
+     * Whether something reachable over the bridge can serve this package.
+     *
+     * <p>True for the system framework as well as for an app, which is what the
+     * hook page asks before it offers to reach into a live process.
+     */
+    public boolean hasPeer(String pkg) {
         BridgeServer server = bridge;
-        return server != null && server.hasAppPeer(pkg);
+        return server != null && server.hasPeer(pkg);
     }
 
     /**
@@ -417,7 +422,7 @@ public final class McpService extends Service {
         if (server == null) {
             return null;
         }
-        return HookDeploy.applyToAllProcesses(server, hook, moduleApk());
+        return HookDeploy.applyToAllProcesses(this, server, hook, moduleApk());
     }
 
     /** Takes a hook out of every live process, because the user turned it off. */
