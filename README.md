@@ -792,6 +792,17 @@ JDK 17+ is required (this project was verified with JDK 22).
   exemptions have to be installed in the process first
   (`VMRuntime.setHiddenApiExemptions`, see `HiddenApi.java`), or the whole reflection chain
   silently finds nothing.
+
+  And that exemption **cannot always be installed**. From Android 11 the call which grants it is
+  itself on the block list, so a process that is not already exempt cannot reach it — an ordinary
+  app process can never bootstrap itself, and
+  `NoSuchMethodException: VMRuntime.setHiddenApiExemptions` means exactly that and nothing worse.
+  Measured on Android 15 with targetSdk 36: a scoped app process logs `hidden API exemptions
+  installed` while this app's own process logs the refusal, and that is deliberate — the app is
+  **not** in its own module scope, because being there would inject the module into the process
+  that runs the confirmation gate, and one kept hook in that process could approve anything.
+  A refusal is a state rather than a verdict: `HiddenApi` retries until it works instead of
+  latching the failure, since a process refused once may still be the framework's guest later.
 - The device's `/system/framework/framework.jar` is a **stub**: the dex inside has no real
   implementations and cannot be used to look up method signatures. Enumerating at runtime
   via `device_info`'s `displayProbe` is the only accurate way.

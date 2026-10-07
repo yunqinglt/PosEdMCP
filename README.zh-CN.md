@@ -637,6 +637,15 @@ ContentProvider——能通就用，省掉一次弹窗。
 - **`Class.getDeclaredMethods()` 会被隐藏 API 过滤**：返回的列表里只有公开成员，看起来像
   "这个方法不存在"。必须先在进程内装好豁免（`VMRuntime.setHiddenApiExemptions`，
   见 `HiddenApi.java`），否则整条反射链会静默地什么都找不到。
+
+  而这层豁免**并不是总能装上**。从 Android 11 起，授予豁免的那个调用自己就在黑名单上，
+  所以一个还不豁免的进程够不到它——普通应用进程永远无法自己给自己开锁，
+  `NoSuchMethodException: VMRuntime.setHiddenApiExemptions` 说明的正是这件事、而不是别的
+  更糟的事。Android 15 / targetSdk 36 实测：作用域内的应用进程打 `hidden API exemptions
+  installed`，本应用自己的进程打的是拒绝——**这是有意的**：本应用**不在自己的模块作用域
+  里**，因为在的话模块就会被注入进跑确认闸门的那个进程，而那里只要有一条持久钩子，就能
+  批准任何事。拒绝是一种状态而不是判决：`HiddenApi` 会一直重试到成功为止，而不是把失败
+  锁死——被拒过一次的进程，之后仍可能是框架的客人。
 - 设备上的 `/system/framework/framework.jar` 是**桩**，里面的 dex 没有真实实现，不能用来
   查方法签名。用 `device_info` 的 `displayProbe` 在运行时枚举才准。
 
