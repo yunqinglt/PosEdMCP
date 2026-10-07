@@ -57,12 +57,42 @@ public final class SystemHooks {
         if (!INSTALLED.compareAndSet(false, true)) {
             return;
         }
-        LOADER = systemClassLoader;
+        LOADER = resolvableLoader(systemClassLoader);
         // Off the main thread: system_server is in the middle of starting its
         // services, and resolving the bridge credentials can block.
         Thread t = new Thread(SystemHooks::installBlocking, "posedmcp-system-install");
         t.setDaemon(true);
         t.start();
+    }
+
+    /**
+     * The loader every name is resolved against inside system_server.
+     *
+     * <p>Not the framework's own, which cannot see everything this process runs:
+     * measured, {@code com.android.server.am.ActivityManagerService} is not
+     * resolvable through it — nor is anything in {@code oplus-services.jar},
+     * which is where OPPO's own AMS extensions live. The thread's context loader
+     * resolves all of those, and it is the one the code we are aiming at was
+     * loaded with.
+     *
+     * <p>Asked first, the framework's loader still answers for everything it
+     * already could, so the hooks that were working keep resolving exactly as
+     * before; the context loader is only reached for what it cannot see. Read
+     * here, on the thread the framework called us on, because a thread's context
+     * loader is inherited at creation and this is the moment it is meaningful.
+     */
+    private static ClassLoader resolvableLoader(ClassLoader fromFramework) {
+        ClassLoader context = null;
+        try {
+            context = Thread.currentThread().getContextClassLoader();
+        } catch (Throwable ignored) {
+        }
+        if (context == null || context == fromFramework) {
+            return fromFramework;
+        }
+        Logx.i("system_server class lookups will try the framework's loader, then the"
+                + " context loader (" + context + ")");
+        return new LayeredLoader(fromFramework, context, ClassLoader.getSystemClassLoader());
     }
 
     private static void installBlocking() {
