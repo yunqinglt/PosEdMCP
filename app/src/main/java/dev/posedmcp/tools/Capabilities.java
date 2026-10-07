@@ -145,6 +145,22 @@ public final class Capabilities {
         return systemCall("foreground", new JSONObject(), 5_000L);
     }
 
+    /**
+     * Arms (or, with -1, disarms) the HANS unfreeze guard in system_server:
+     * while the probe holds a cgroup freeze, the ROM's own freezer manager
+     * must not thaw that uid. Best-effort - the guard protects the freeze,
+     * it is never the freeze itself.
+     */
+    public void setProbeGuard(int uid) {
+        try {
+            JSONObject args = new JSONObject();
+            args.put("uid", uid);
+            systemCall("probe_guard", args, 3_000L);
+        } catch (Throwable t) {
+            Logx.w("probe: could not set the HANS guard: " + t);
+        }
+    }
+
     public JSONObject systemInvokePlugin(String pkg, String className, String method, String argsJson)
             throws IOException {
         JSONObject args = new JSONObject();

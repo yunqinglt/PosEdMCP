@@ -49,16 +49,19 @@ public final class ProcessProbe {
         public final String[] paths;
         /** Which backend froze it: "cgroup" or "signal". */
         public final String backend;
+        /** The app's uid - the key the HANS unfreeze guard is armed on. */
+        public final int uid;
         public final long frozenAt;
         public final long expiresAt;
 
         State(String pkg, int[] pids, String[] starts, String[] paths, String backend,
-                long frozenAt, long expiresAt) {
+                int uid, long frozenAt, long expiresAt) {
             this.pkg = pkg;
             this.pids = pids;
             this.starts = starts;
             this.paths = paths;
             this.backend = backend;
+            this.uid = uid;
             this.frozenAt = frozenAt;
             this.expiresAt = expiresAt;
         }
@@ -89,6 +92,7 @@ public final class ProcessProbe {
                 Logx.i("probe: freeze of " + state.pkg + " has expired; clearing");
                 current = null;
                 clear(ctx);
+                clearGuard();
                 return null;
             }
             return state;
@@ -176,7 +180,9 @@ public final class ProcessProbe {
             }
 
             long now = System.currentTimeMillis();
-            State state = new State(pkg, pids, starts, null, "signal", now, now + durationMs);
+            int uid = (int) processes.get(0)[2];
+            State state = new State(pkg, pids, starts, null, "signal", uid,
+                    now, now + durationMs);
 
             // The scene is captured before the freeze: a stopped process does
             // not handle signals or answer bridges, and the whole point of the
@@ -265,7 +271,7 @@ public final class ProcessProbe {
                 RootShell.Result frozen = RootShell.exec(
                         cgroupFreezeCommand(state.expiresAt, paths), 10_000L);
                 if (frozen.ok()) {
-                    state = new State(pkg, pids, starts, paths, "cgroup",
+                    state = new State(pkg, pids, starts, paths, "cgroup", uid,
                             state.frozenAt, state.expiresAt);
                     finishFreeze(ctx, pkg, state, snapshot, store);
                     return state;
@@ -288,7 +294,7 @@ public final class ProcessProbe {
                 throw new IOException(ctx.getString(R.string.toast_probe_freeze_failed,
                         firstLine(stopped.stderr)));
             }
-            state = new State(pkg, pids, starts, null, "signal",
+            state = new State(pkg, pids, starts, null, "signal", uid,
                     state.frozenAt, state.expiresAt);
             finishFreeze(ctx, pkg, state, snapshot, store);
             return state;
@@ -301,6 +307,15 @@ public final class ProcessProbe {
         armWatchdog(state);
         save(ctx, state);
         current = state;
+        // On the cgroup backend the ROM's own freezer manager (HANS on
+        // ColorOS) can thaw the uid we just froze; the guard tells
+        // system_server to leave it alone until the freeze ends.
+        if (ProbeBackend.Kind.CGROUP.name().equalsIgnoreCase(state.backend)) {
+            McpService service = McpService.instance();
+            if (service != null) {
+                service.setProbeGuard(state.uid);
+            }
+        }
         if (snapshot != null) {
             try {
                 if (store != null) {
@@ -337,6 +352,7 @@ public final class ProcessProbe {
             }
             current = null;
             clear(ctx);
+            clearGuard();
         }
         Logx.i("probe: resumed " + state.pkg);
     }
@@ -363,6 +379,7 @@ public final class ProcessProbe {
             }
             current = null;
             clear(ctx);
+            clearGuard();
             Logx.i("probe: resumed " + state.pkg + " (agent)");
             return true;
         }
@@ -473,11 +490,12 @@ public final class ProcessProbe {
 
     private static List<long[]> listProcesses(String pkg) throws IOException {
         // Every process whose name is the package or a "pkg:suffix" of it, with
-        // its start time - the one fingerprint that survives pid recycling.
-        String cmd = "ps -A -o PID,NAME | awk -v P=\"" + pkg + "\""
-                + " '$2==P || index($2,P\":\")==1 {print $1}'"
-                + " | while read p; do s=$(cut -d' ' -f22 /proc/$p/stat 2>/dev/null);"
-                + " [ -n \"$s\" ] && echo \"$p $s\"; done";
+        // its start time - the one fingerprint that survives pid recycling -
+        // and its uid, which the HANS guard keys on.
+        String cmd = "ps -A -o PID,UID,NAME | awk -v P=\"" + pkg + "\""
+                + " '$3==P || index($3,P\":\")==1 {print $1, $2}'"
+                + " | while read p u; do s=$(cut -d' ' -f22 /proc/$p/stat 2>/dev/null);"
+                + " [ -n \"$s\" ] && echo \"$p $s $u\"; done";
         RootShell.Result r = RootShell.exec(cmd, 10_000L);
         if (!r.ok()) {
             throw new IOException("could not list processes: " + firstLine(r.stderr));
@@ -485,14 +503,23 @@ public final class ProcessProbe {
         List<long[]> out = new ArrayList<>();
         for (String line : r.stdout.split("\n")) {
             String[] parts = line.trim().split("\\s+");
-            if (parts.length == 2) {
+            if (parts.length == 3) {
                 try {
-                    out.add(new long[]{Long.parseLong(parts[0]), Long.parseLong(parts[1])});
+                    out.add(new long[]{Long.parseLong(parts[0]), Long.parseLong(parts[1]),
+                            Long.parseLong(parts[2])});
                 } catch (NumberFormatException ignored) {
                 }
             }
         }
         return out;
+    }
+
+    /** Disarms the HANS unfreeze guard in system_server, best-effort. */
+    private static void clearGuard() {
+        McpService service = McpService.instance();
+        if (service != null) {
+            service.setProbeGuard(-1);
+        }
     }
 
     private static String firstLine(String text) {
@@ -530,7 +557,7 @@ public final class ProcessProbe {
             }
             String backend = o.optString("backend", "signal");
             return new State(o.getString("pkg"), pids, starts, paths, backend,
-                    o.getLong("frozenAt"), o.getLong("expiresAt"));
+                    o.optInt("uid", -1), o.getLong("frozenAt"), o.getLong("expiresAt"));
         } catch (Throwable t) {
             Logx.w("probe: unreadable persisted state, clearing: " + t);
             clear(ctx);
@@ -558,6 +585,7 @@ public final class ProcessProbe {
                 o.put("paths", pathsA);
             }
             o.put("backend", state.backend);
+            o.put("uid", state.uid);
             o.put("frozenAt", state.frozenAt);
             o.put("expiresAt", state.expiresAt);
             Prefs.of(ctx).setProbeStateJson(o.toString());

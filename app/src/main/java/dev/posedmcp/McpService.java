@@ -164,6 +164,14 @@ public final class McpService extends Service {
         return pkg.isEmpty() ? null : pkg;
     }
 
+    /** Arms (or, with -1, disarms) the HANS unfreeze guard in system_server. */
+    public void setProbeGuard(int uid) {
+        Capabilities caps = capabilities;
+        if (caps != null) {
+            caps.setProbeGuard(uid);
+        }
+    }
+
     /** The poller's raw foreground string ("pkg/Activity"), or null. */
     public String foregroundRaw() {
         Capabilities caps = capabilities;

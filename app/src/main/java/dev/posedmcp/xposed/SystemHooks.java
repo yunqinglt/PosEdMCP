@@ -39,6 +39,14 @@ public final class SystemHooks {
 
     private static final long POLL_INTERVAL_MS = 2000L;
 
+    /** The uid the probe currently holds a cgroup freeze on, or -1. */
+    private static volatile int probeGuardedUid = -1;
+
+    /** Read by the counter-Athena Lua script from inside its HANS hooks. */
+    public static int probeGuardedUid() {
+        return probeGuardedUid;
+    }
+
     private static final SystemOps OPS = new SystemOps();
     private static final AtomicBoolean INSTALLED = new AtomicBoolean(false);
 
@@ -90,9 +98,15 @@ public final class SystemHooks {
         if (context == null || context == fromFramework) {
             return fromFramework;
         }
+        // This module's own classes are loaded by the module class loader,
+        // which none of the three below can resolve - measured when a Lua
+        // script asked for SystemHooks itself and got nil, silently turning
+        // the HANS guard off. It goes first; its parent chain still reaches
+        // everything the others do.
         Logx.i("system_server class lookups will try the framework's loader, then the"
                 + " context loader (" + context + ")");
-        return new LayeredLoader(fromFramework, context, ClassLoader.getSystemClassLoader());
+        return new LayeredLoader(SystemHooks.class.getClassLoader(), fromFramework, context,
+                ClassLoader.getSystemClassLoader());
     }
 
     private static void installBlocking() {
@@ -111,6 +125,17 @@ public final class SystemHooks {
                     .put("framework", Framework.describe())
                     .put("hooks", HookRegistry.snapshot().size()));
             bridge.registerHandler("probe_display", args -> OPS.probeDisplay());
+            // The uid the probe currently holds a cgroup freeze on, or -1. The
+            // counter-Athena script reads it (see assets/special/athena.lua):
+            // while a freeze is held, HANS - the cgroup freezer manager on
+            // ColorOS - must not unfreeze that uid, or the probe's freeze is
+            // silently undone by the ROM's own scene engine.
+            bridge.registerHandler("probe_guard", args -> {
+                probeGuardedUid = args.optInt("uid", -1);
+                Logx.i("probe: HANS unfreeze guard "
+                        + (probeGuardedUid > 0 ? "armed for uid " + probeGuardedUid : "cleared"));
+                return new JSONObject().put("guardedUid", probeGuardedUid);
+            });
             // The same hook surface an ordinary app gets, on the process that
             // needed it most. HookRegistry, LuaRuntime and MethodInvoker want
             // nothing but a ClassLoader and, for the Lua bindings, a Context that
