@@ -473,6 +473,26 @@ that maps that name to the `system` peer. `HookRegistry`, `LuaRuntime` and `Meth
 not touched: they want a `ClassLoader` and nothing else, so registering them on the system
 bridge client is the whole of it.
 
+### Telling system_server apart from a process that merely loaded its classes
+
+`Framework.isSystemServer` used to decide from the package name the framework handed it, with the
+process name as a second guess and `/proc/self/cmdline` only as a last resort. The first of those
+does not answer the question it looks like it answers: a callback's package name is whichever
+package the framework happened to be loading, and in `com.android.systemui`'s process that can be
+`android`.
+
+Measured on Vector: systemui therefore decided it was system_server and installed a second
+`SystemHooks`. Both copies connected as the `system` peer — and since a peer's key is its role,
+`BridgeServer` closed the older one each time a newer arrived. The two then took turns, connecting
+and being closed once a second, for hours. Every symptom was indirect: the system bridge was never
+stably up, each push to the system peer raced a socket that was being torn down, and the system
+ops could be answered by systemui with its own privileges rather than system_server's. None of it
+was visible in the app, which is why it took a log to find.
+
+The process's own name is the only signal here that cannot be about a different process, so it
+decides whenever it can be read; the framework's hints are kept for a process whose own name
+cannot be read at all.
+
 **The bargain is different here, and the prompt says so.** A kept hook inside `system_server`
 is put back before the user can reach the page that would remove it, which is how a bad hook
 becomes a phone that cannot finish booting. The confirmation dialog for that target is

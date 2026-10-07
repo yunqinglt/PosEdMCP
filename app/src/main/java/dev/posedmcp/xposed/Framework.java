@@ -82,25 +82,40 @@ public final class Framework {
     }
 
     /**
-     * Whether this process is system_server.
+     * Whether the process we are running in is system_server.
      *
-     * <p>Classic Xposed reports system_server as package {@code android}, and
-     * this module originally tested for exactly that — which is why the system
-     * hooks were never installed: LSPosed delivered the callback with the name
-     * of whichever system package was loading. Three signals are checked,
-     * cheapest first, because getting this wrong silently downgrades every
-     * system-level feature. The last one reads this process's own
-     * {@code /proc/self/cmdline}, which is authoritative and does not depend on
-     * what the framework chose to pass us.
+     * <p>Decided by this process's own {@code /proc/self/cmdline} whenever it can
+     * be read, because it is the only signal here that cannot be about some other
+     * process. The other two are hints the framework passed us, and one of them
+     * is wrong in a way that is very expensive to find: the package name in a
+     * callback is whichever package the framework happened to be loading, and in
+     * {@code com.android.systemui}'s process that can be {@code android}.
+     *
+     * <p>Measured on Vector: taking that name as the answer put a second
+     * {@code SystemHooks} inside systemui. Both copies then connected as the
+     * {@code system} peer, and since a peer's key is its role, each new
+     * connection closed the other's socket - a reconnect loop at one per second
+     * that ran for hours, invisible in the UI, leaving every push to the system
+     * peer racing a socket that was being torn down, and letting systemui answer
+     * the system ops with its own privileges instead of system_server's.
+     *
+     * <p>The hints are still here, but only for a process whose own name cannot
+     * be read; they no longer decide while the answer is available.
      */
     public static boolean isSystemServer(String packageName, String processName) {
+        String cmdline = processNameFromCmdline();
+        if (cmdline != null && !cmdline.isEmpty()) {
+            return isSystemServerName(cmdline);
+        }
         if ("android".equals(packageName)) {
             return true;
         }
-        if ("system_server".equals(processName) || "system".equals(processName)) {
-            return true;
-        }
-        return "system_server".equals(processNameFromCmdline());
+        return isSystemServerName(processName);
+    }
+
+    /** The names the platform gives the system server process. */
+    private static boolean isSystemServerName(String name) {
+        return "system_server".equals(name) || "system".equals(name);
     }
 
     private static String processNameFromCmdline() {

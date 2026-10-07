@@ -375,6 +375,22 @@ hook_method / hook_lua
 helper，把这个名字映射到 `system` peer。`HookRegistry`、`LuaRuntime`、`MethodInvoker`
 一行没改：它们只要一个 `ClassLoader`，所以把这几个 handler 注册到系统那条桥上就是全部。
 
+### 怎么把 system_server 和一个「只是加载了它的类」的进程分开
+
+`Framework.isSystemServer` 原先靠框架递来的包名判断，进程名作第二条，`/proc/self/cmdline` 只
+当最后兜底。第一条回答的不是它看起来在回答的问题：**回调里的包名是框架当时正在加载的那个包**，
+而在 `com.android.systemui` 的进程里，它可能是 `android`。
+
+在 Vector 上实测：systemui 因此认定自己是 system_server，装了第二份 `SystemHooks`。两份都以
+`system` 这个 peer 身份连接——而 peer 的键就是它的角色，所以 `BridgeServer` 在每次新连接到来时
+把旧的那个关掉。于是两者轮流连、轮流被关，**每秒一次，持续了十几个小时**。表现出来的症状全是
+间接的：系统那条桥从来没有稳定在线过，每一次往 system peer 推送都撞在一个正在被拆掉的 socket
+上，而系统 op 可能是 systemui 在用自己那份权限应答。这些在应用里一点都看不出来，所以查它靠的
+是日志。
+
+进程自己的名字是这里**唯一不可能指错进程**的信号，所以只要能读到就由它说了算；框架给的提示只
+留给「连自己的名字都读不到」的进程。
+
 **这里的代价不一样，提示词里也如实写了。** 留在 `system_server` 里的持久钩子会在用户够得着
 删除它的页面**之前**被装回去——坏钩子就是这样变成开不了机的手机的。所以针对这个目标的确认
 弹窗比项目里任何一个都长：它说清 `system_server` 是什么、这个钩子是不是持久的、以及下面那个
