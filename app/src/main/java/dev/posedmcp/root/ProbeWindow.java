@@ -261,12 +261,23 @@ public final class ProbeWindow {
         frozenText.setPadding(dp(14), dp(10), dp(14), dp(10));
         pill.addView(frozenText);
         pill.setOnClickListener(v -> resumeNow());
+        pill.setOnTouchListener(new DragFrozenPill());
         FrameLayout.LayoutParams pillLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.END);
-        pillLp.rightMargin = dp(PILL_MARGIN_DP);
-        pillLp.topMargin = dp(PILL_TOP_DP);
+                Gravity.TOP | Gravity.START);
         root.addView(pill, pillLp);
+
+        // Park it at the top right, once its real width is known - the same
+        // place the idle pill lives, so the two states do not jump around.
+        pill.post(() -> {
+            if (frozenRoot == null) {
+                return;
+            }
+            pillLp.leftMargin = appCtx.getResources().getDisplayMetrics().widthPixels
+                    - pill.getWidth() - dp(PILL_MARGIN_DP);
+            pillLp.topMargin = dp(PILL_TOP_DP);
+            pill.setLayoutParams(pillLp);
+        });
 
         frozenRoot = root;
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
@@ -430,6 +441,61 @@ public final class ProbeWindow {
                         idleLp.x = clamp(last[0] + (int) dx, 0, screenW - v.getWidth());
                         idleLp.y = clamp(last[1] + (int) dy, 0, screenH - v.getHeight());
                         wm.updateViewLayout(v, idleLp);
+                    }
+                    return true;
+                }
+                case MotionEvent.ACTION_UP:
+                    if (!moved) {
+                        v.performClick();
+                    }
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static int clamp(int value, int min, int max) {
+            return Math.max(min, Math.min(max, value));
+        }
+    }
+
+    /**
+     * Drags the frozen-state pill, which lives inside the full-screen shield
+     * window and therefore moves by its layout margins rather than window
+     * coordinates. A touch that never moves is a tap, which resumes.
+     */
+    private static final class DragFrozenPill implements View.OnTouchListener {
+        private final float[] down = new float[2];
+        private final int[] last = new int[2];
+        private boolean moved;
+
+        @Override
+        public boolean onTouch(View v, MotionEvent e) {
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN: {
+                    FrameLayout.LayoutParams lp =
+                            (FrameLayout.LayoutParams) v.getLayoutParams();
+                    last[0] = lp.leftMargin;
+                    last[1] = lp.topMargin;
+                    down[0] = e.getRawX();
+                    down[1] = e.getRawY();
+                    moved = false;
+                    return true;
+                }
+                case MotionEvent.ACTION_MOVE: {
+                    float dx = e.getRawX() - down[0];
+                    float dy = e.getRawY() - down[1];
+                    if (!moved && Math.hypot(dx, dy) > dp(DRAG_SLOP_DP)) {
+                        moved = true;
+                    }
+                    if (moved) {
+                        int screenW = appCtx.getResources().getDisplayMetrics().widthPixels;
+                        int screenH = appCtx.getResources().getDisplayMetrics().heightPixels;
+                        FrameLayout.LayoutParams lp =
+                                (FrameLayout.LayoutParams) v.getLayoutParams();
+                        lp.leftMargin = clamp(last[0] + (int) dx, 0, screenW - v.getWidth());
+                        lp.topMargin = clamp(last[1] + (int) dy, 0, screenH - v.getHeight());
+                        v.setLayoutParams(lp);
                     }
                     return true;
                 }
