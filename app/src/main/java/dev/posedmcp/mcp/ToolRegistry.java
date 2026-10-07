@@ -646,8 +646,18 @@ public final class ToolRegistry {
 
                     // The shell route needs a root command for every dump, which is
                     // why it is the fallback rather than the default.
+                    // The file is removed first, and that is the whole point of this
+                    // line. `uiautomator dump` leaves the previous file untouched when
+                    // it cannot reach an idle state, and its own output is discarded,
+                    // so without the removal a failed dump cats back the *last* screen
+                    // and every check below passes: the agent would then measure
+                    // coordinates against a screen that is no longer there and send
+                    // input to whatever is. Measured with a sentinel file in place of
+                    // that earlier screen: the shape without `rm -f` returned it, the
+                    // shape with it returns nothing and the check fires.
                     String path = "/data/local/tmp/posedmcp_ui.xml";
-                    String command = "uiautomator dump --compressed " + shellQuote(path)
+                    String command = "rm -f " + shellQuote(path)
+                            + "; uiautomator dump --compressed " + shellQuote(path)
                             + " >/dev/null 2>&1; cat " + shellQuote(path);
 
                     requireConfirmation(ConfirmationGate.Kind.SHELL, "Root shell command", command,
@@ -656,7 +666,9 @@ public final class ToolRegistry {
                     RootShell.Result result = capabilities.confirmedShell(command, 30_000L);
                     if (!result.ok() || result.stdout.trim().isEmpty()) {
                         throw new McpTool.ToolError("uiautomator dump produced nothing"
-                                + " (exit " + result.exitCode + ")"
+                                + " (exit " + result.exitCode + "). It refuses while the device"
+                                + " is not idle, which is the usual cause and is worth retrying;"
+                                + " nothing stale is ever returned in its place."
                                 + (result.stderr.isEmpty() ? "" : ": " + result.stderr.trim()));
                     }
                     JSONObject out = parseUiDump(result.stdout, simplify);

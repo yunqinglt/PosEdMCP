@@ -935,6 +935,13 @@ Zygisk-LSPosed 1.10.2 (7182):
   showed the reason with a Lift button, pressing it cleared the property and the file, and the
   guard stood back down to stage one. Stage two copied both hook libraries into `backup/` and
   moved them aside, and the app read the library back intact once it was restored.
+- **`ui_dump` can no longer return a stale screen.** `uiautomator dump` leaves its output file
+  untouched when it cannot reach an idle state, and the tool threw the dump's own output away,
+  so a failed dump cat-ed back the *previous* tree while every check below it passed: the agent
+  would then measure coordinates against a screen that was no longer there and send input to
+  whatever was. The file is now removed first, so the same failure empties the output and is
+  reported. Demonstrated with a sentinel file standing in for that earlier screen — the old
+  shape returned it, the new one returns nothing.
 
 ### Not yet verified
 
