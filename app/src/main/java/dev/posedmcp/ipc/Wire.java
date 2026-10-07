@@ -54,21 +54,44 @@ public final class Wire {
      * @throws IOException if the peer sends a line that is not a JSON object
      */
     public static JSONObject readJson(BufferedReader in) throws IOException {
-        String line = in.readLine();
+        String line = readLine(in);
         if (line == null) {
             return null;
         }
         if (line.isEmpty()) {
             return new JSONObject();
         }
-        if (line.length() > MAX_LINE_CHARS) {
-            throw new IOException("bridge line too long: " + line.length());
-        }
         try {
             return new JSONObject(line);
         } catch (Throwable t) {
             throw new IOException("bridge peer sent non-JSON line", t);
         }
+    }
+
+
+    private static String readLine(BufferedReader in) throws IOException {
+        StringBuilder sb = new StringBuilder(256);
+        int c;
+        boolean any = false;
+        while ((c = in.read()) >= 0) {
+            any = true;
+            if (c == '\n') {
+                return stripTrailingCr(sb);
+            }
+            sb.append((char) c);
+            if (sb.length() > MAX_LINE_CHARS) {
+                throw new IOException("bridge line exceeds " + MAX_LINE_CHARS + " chars");
+            }
+        }
+        return any ? stripTrailingCr(sb) : null;
+    }
+
+    private static String stripTrailingCr(StringBuilder sb) {
+        int last = sb.length() - 1;
+        if (last >= 0 && sb.charAt(last) == '\r') {
+            sb.setLength(last);
+        }
+        return sb.toString();
     }
 
     public static void writeJson(Writer out, JSONObject obj) throws IOException {
