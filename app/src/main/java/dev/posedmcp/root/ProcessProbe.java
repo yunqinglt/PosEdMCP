@@ -16,6 +16,7 @@ import dev.posedmcp.Logx;
 import dev.posedmcp.R;
 import dev.posedmcp.a11y.AccessibilityBridge;
 import dev.posedmcp.state.Prefs;
+import dev.posedmcp.state.ProbeStore;
 import dev.posedmcp.state.SavedHook;
 
 /**
@@ -169,6 +170,22 @@ public final class ProcessProbe {
             long now = System.currentTimeMillis();
             State state = new State(pkg, pids, starts, now, now + durationMs);
 
+            // The scene is captured before the freeze: a stopped process does
+            // not handle SIGQUIT, and the whole point of the freeze is what
+            // the scene was. Best-effort - a lost snapshot must never lose the
+            // freeze itself. A failed one is still filed, so probe_state can
+            // say why there are no stacks instead of letting the model guess.
+            JSONObject snapshot = ProbeSnapshot.capture(ctx, pkg, pids[0]);
+            if (snapshot == null) {
+                try {
+                    snapshot = new JSONObject();
+                    snapshot.put("captureError", ProbeSnapshot.lastError());
+                    snapshot.put("capturedAt", System.currentTimeMillis());
+                } catch (Throwable ignored) {
+                    snapshot = null;
+                }
+            }
+
             // A refused marker write aborts the whole freeze: without the
             // marker the watchdog cannot vouch for its own deadline, and a
             // freeze whose only escape is a person who might not be there is
@@ -187,6 +204,16 @@ public final class ProcessProbe {
             armWatchdog(state);
             save(ctx, state);
             current = state;
+            if (snapshot != null) {
+                try {
+                    ProbeStore store = ProbeStore.instance();
+                    if (store != null) {
+                        store.add(pkg, snapshot);
+                    }
+                } catch (Throwable t) {
+                    Logx.w("probe: could not file the snapshot: " + t);
+                }
+            }
             Logx.i("probe: frozen " + pkg + " (" + pids.length + " pid(s)) for "
                     + (durationMs / 1000L) + "s, watchdog armed");
             return state;
@@ -217,6 +244,33 @@ public final class ProcessProbe {
             clear(ctx);
         }
         Logx.i("probe: resumed " + state.pkg);
+    }
+
+    /**
+     * Releases the frozen app if - and only if - it is this package, in one
+     * critical section so a re-freeze started between the check and the
+     * release cannot be released by mistake. This is the agent's path:
+     * {@code probe_resume} takes a package name and nothing else, and the
+     * shell it runs is built entirely from the record this app wrote when it
+     * froze that package.
+     *
+     * @return true when this package was the one frozen and has been released
+     */
+    public static boolean resumeIf(Context ctx, String pkg) throws IOException {
+        synchronized (LOCK) {
+            State state = current(ctx);
+            if (state == null || !state.pkg.equals(pkg)) {
+                return false;
+            }
+            RootShell.Result resumed = RootShell.exec(resumeScript(state), 10_000L);
+            if (!resumed.ok()) {
+                Logx.w("probe: resume command reported: " + firstLine(resumed.stderr));
+            }
+            current = null;
+            clear(ctx);
+            Logx.i("probe: resumed " + state.pkg + " (agent)");
+            return true;
+        }
     }
 
     /** CONTs each pid only while it is still stopped, then takes the marker down. */

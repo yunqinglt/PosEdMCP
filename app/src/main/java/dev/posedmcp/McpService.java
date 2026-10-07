@@ -31,6 +31,7 @@ import dev.posedmcp.state.EventStore;
 import dev.posedmcp.state.HookRecordStore;
 import dev.posedmcp.state.PeerTrust;
 import dev.posedmcp.state.Prefs;
+import dev.posedmcp.state.ProbeStore;
 import dev.posedmcp.state.SavedHook;
 import dev.posedmcp.tools.Capabilities;
 import dev.posedmcp.tools.HookDeploy;
@@ -205,6 +206,9 @@ public final class McpService extends Service {
             // are produced by processes that may be gone before anyone reads
             // them, and this app is one of them.
             hookRecords = new HookRecordStore(this);
+            // Probe snapshots are captured at freeze time and read by
+            // probe_state; they outlive both the frozen process and this one.
+            ProbeStore.install(this);
             // Window transitions come from the accessibility service, which runs
             // in this process, so they can go straight into the feed.
             AccessibilityBridge.setEventSink((type, data) ->
@@ -215,7 +219,8 @@ public final class McpService extends Service {
 
             Capabilities caps = new Capabilities(this, bridge);
             capabilities = caps;
-            tools = new ToolRegistry(this, prefs, caps, bridge, events, hookRecords);
+            tools = new ToolRegistry(this, prefs, caps, bridge, events, hookRecords,
+                    ProbeStore.instance());
             mcp = new McpServer(this, prefs, tools, events);
             mcp.start();
 

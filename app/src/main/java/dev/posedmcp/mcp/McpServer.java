@@ -39,7 +39,7 @@ public final class McpServer {
             "",
             "How to work with this server:",
             "1. Prefer the narrowest tool that answers the question. Use device_info, list_packages,",
-            "   foreground_app and events_poll to understand state before you act.",
+            "   foreground_app, events_poll and probe_state to understand state before you act.",
             "2. root_shell_exec runs as uid 0 and ALWAYS shows the user a dialog containing the exact",
             "   command and your stated reason. The user must tap approve. A refused or timed-out",
             "   request comes back as an error - report it plainly, do not retry the same command in a",

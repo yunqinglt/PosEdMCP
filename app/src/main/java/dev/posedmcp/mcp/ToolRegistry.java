@@ -33,6 +33,7 @@ import dev.posedmcp.dex.DexClient;
 import dev.posedmcp.ipc.BridgeServer;
 import dev.posedmcp.root.AuditNotifier;
 import dev.posedmcp.root.ConfirmationGate;
+import dev.posedmcp.root.ProcessProbe;
 import dev.posedmcp.root.RootShell;
 import dev.posedmcp.state.DeviceStatus;
 import dev.posedmcp.state.EventStore;
@@ -40,6 +41,7 @@ import dev.posedmcp.state.HookGuard;
 import dev.posedmcp.state.HookRecordStore;
 import dev.posedmcp.state.HookStore;
 import dev.posedmcp.state.Prefs;
+import dev.posedmcp.state.ProbeStore;
 import dev.posedmcp.state.SavedHook;
 import dev.posedmcp.state.SavedScript;
 import dev.posedmcp.state.ScriptStore;
@@ -90,6 +92,7 @@ public final class ToolRegistry {
     private final BridgeServer bridge;
     private final EventStore events;
     private final HookRecordStore hookRecords;
+    private final ProbeStore probeStore;
     private final Map<String, McpTool> tools = new LinkedHashMap<>();
 
     /** Set from the MCP handshake so prompts can name the agent that asked. */
@@ -114,13 +117,14 @@ public final class ToolRegistry {
     }
 
     public ToolRegistry(Context context, Prefs prefs, Capabilities capabilities, BridgeServer bridge,
-            EventStore events, HookRecordStore hookRecords) {
+            EventStore events, HookRecordStore hookRecords, ProbeStore probeStore) {
         this.context = context;
         this.prefs = prefs;
         this.capabilities = capabilities;
         this.bridge = bridge;
         this.events = events;
         this.hookRecords = hookRecords;
+        this.probeStore = probeStore;
         registerAll();
     }
 
@@ -1233,6 +1237,145 @@ public final class ToolRegistry {
                                 ? "nothing is hooked in any process of this package"
                                 : "hooks are armed but nothing has called them yet");
                     }
+                    return McpTool.json(out);
+                })
+                .build());
+
+        add(McpTool.of("probe_state")
+                .title("Read the frozen probe target")
+                .description("The app the user has frozen with the floating probe button, and the"
+                        + " evidence captured at the moment it froze: every thread with its Java"
+                        + " stack, plus which packages outside the app own the most frames."
+                        + " Read-only."
+                        + "\n\nA freeze is the only way a transient screen can be inspected"
+                        + " without racing it: the user presses the button and the scene stays"
+                        + " exactly as it was. You cannot freeze anything yourself;"
+                        + " probe_resume releases it."
+                        + "\n\ninScope says whether the module is loaded into that app. true"
+                        + " means hook_method / hook_lua / lua_exec can reach into the frozen"
+                        + " process right now; false means the stacks and screenshots are all"
+                        + " there is, and no probe can be inserted until the user adds the app"
+                        + " to the LSPosed scope.")
+                .readOnly()
+                .input(props(
+                        "package", McpTool.string("Package name of the frozen app,"
+                                + " e.g. com.miui.gallery")),
+                        "package")
+                .handler(args -> {
+                    String pkg = require(args, "package");
+                    JSONObject out = new JSONObject();
+                    out.put("package", pkg);
+
+                    ProcessProbe.State state = ProcessProbe.current(context);
+                    if (state == null || !state.pkg.equals(pkg)) {
+                        out.put("frozen", false);
+                        JSONArray notes = new JSONArray();
+                        if (state == null) {
+                            notes.put("Nothing is frozen. The user freezes the app in front with"
+                                    + " the floating probe button; the snapshot exists only from"
+                                    + " that moment, because a transient screen is gone by the"
+                                    + " time any tool could read it.");
+                        } else {
+                            notes.put("The probe freeze currently holds " + state.pkg
+                                    + ", not " + pkg + ".");
+                        }
+                        out.put("notes", notes);
+                        return McpTool.json(out);
+                    }
+
+                    out.put("frozen", true);
+                    out.put("frozenAt", state.frozenAt);
+                    out.put("expiresAt", state.expiresAt);
+                    out.put("remainingMs", state.remainingMs());
+                    JSONArray pids = new JSONArray();
+                    for (int pid : state.pids) {
+                        pids.put(pid);
+                    }
+                    out.put("pids", pids);
+
+                    boolean inScope = false;
+                    try {
+                        inScope = !bridge.peerKeys(pkg).isEmpty();
+                    } catch (Throwable ignored) {
+                    }
+                    out.put("inScope", inScope);
+
+                    // The frozen process cannot be asked: it is frozen, and the
+                    // snapshot was taken at freeze time because that is the one
+                    // moment the scene existed. This store is what survives it.
+                    JSONObject snapshot = probeStore == null ? null : probeStore.latest(pkg);
+                    if (snapshot != null) {
+                        out.put("capturedAt", snapshot.optLong("capturedAt", 0L));
+                        if (snapshot.has("captureError")) {
+                            out.put("captureError", snapshot.optString("captureError"));
+                        } else {
+                            out.put("threads", snapshot.optJSONArray("threads"));
+                            out.put("foreignPackages", snapshot.optJSONArray("foreignPackages"));
+                        }
+                    }
+
+                    JSONArray notes = new JSONArray();
+                    notes.put("The screen is frozen exactly as the user left it: screen_capture"
+                            + " sees the same frame for as long as this freeze lasts.");
+                    notes.put("It releases itself in " + (state.remainingMs() / 1000L)
+                            + "s (probe_resume releases it earlier).");
+                    if (snapshot != null && snapshot.has("captureError")) {
+                        notes.put("The Java stacks could not be captured: "
+                                + snapshot.optString("captureError")
+                                + ". Some system apps swallow the dump signal; for those,"
+                                + " the stacks arrive only from inside the process, which"
+                                + " needs the app in the module's scope.");
+                    }
+                    if (inScope) {
+                        notes.put("This app is in the module's scope: hook_method, hook_lua and"
+                                + " lua_exec can reach into the frozen process right now."
+                                + " Threads whose stacks run through a foreign package"
+                                + " (see foreignPackages) are where third-party SDKs live -"
+                                + " hooking one of those frames' methods is how its arguments"
+                                + " are read.");
+                    } else {
+                        notes.put("This app is NOT in the module's scope, so nothing can be"
+                                + " inserted into it: the Java stacks and screenshots are all"
+                                + " there is. For probe access the user must add the app to the"
+                                + " LSPosed scope (and the app restarts).");
+                    }
+                    out.put("notes", notes);
+                    return McpTool.json(out);
+                })
+                .build());
+
+        add(McpTool.of("probe_resume")
+                .title("Release the frozen probe target")
+                .description("Releases the app frozen by the probe button. Takes a package name"
+                        + " and nothing else: the release is a fixed root command built from the"
+                        + " record this app wrote when it froze that package, so the argument"
+                        + " can only choose among freezes that already exist - it is validated"
+                        + " against that record and never reaches the shell."
+                        + " Deliberately does NOT prompt: a freeze is a state the user asked"
+                        + " for, releasing it can do nothing but end it, and putting a"
+                        + " confirmation on the release path would only lengthen the freeze in"
+                        + " exactly the case where the user is not there to answer.")
+                .mutating()
+                .input(props(
+                        "package", McpTool.string("Package name of the frozen app,"
+                                + " e.g. com.miui.gallery")),
+                        "package")
+                .handler(args -> {
+                    String pkg = require(args, "package");
+                    boolean released;
+                    try {
+                        released = ProcessProbe.resumeIf(context, pkg);
+                    } catch (Throwable t) {
+                        throw new McpTool.ToolError("could not release the freeze: " + t);
+                    }
+                    if (!released) {
+                        ProcessProbe.State state = ProcessProbe.current(context);
+                        throw new McpTool.ToolError(state == null
+                                ? "nothing is frozen"
+                                : "the probe freeze holds " + state.pkg + ", not " + pkg);
+                    }
+                    JSONObject out = new JSONObject();
+                    out.put("released", pkg);
                     return McpTool.json(out);
                 })
                 .build());
