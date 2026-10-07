@@ -400,9 +400,9 @@ helper，把这个名字映射到 `system` peer。`HookRegistry`、`LuaRuntime`�
 ### `posedmcp-guard`
 
 出路不能住在应用里，因为**可能永远跑不起来的就是这个应用**。它是一个 Magisk 模块，在
-[`magisk/posedmcp-guard`](magisk/posedmcp-guard)，用
-[`tools/install-guard.sh`](tools/install-guard.sh) 安装——**没有做成 zip**，因为 zip 是给
-安装器用的安装器，而这里一切通往设备的方式都是 `adb`。
+[`magisk/posedmcp-guard`](magisk/posedmcp-guard)，有两种装法：用
+[`tools/install-guard.sh`](tools/install-guard.sh) 经 `adb` 拷进去（这里一切通往设备的方式都是
+`adb`），或者刷 [`tools/release.sh`](tools/release.sh) 打出来的 zip——那个在 Magisk 应用里刷。
 
 ```
 post-fs-data.sh   在 zygote 起来之前，数那些没能走完的开机
@@ -615,6 +615,22 @@ Android 13 及以后，应用还会出现在**设置 → 应用 → 奈何桥 �
 
 ## 开发
 
+### 发布产物
+
+[`tools/release.sh`](tools/release.sh) 会把两样东西打进 `dist/`：
+
+```
+dist/PosEdMCP-<versionName>.apk           应用，用应用自己的版本号命名
+dist/posedmcp-guard-<模块版本>.zip         救砖模块，用它自己的版本号命名
+```
+
+两者版本号不同是有意的：应用和救砖模块的改动节奏不一样，硬凑成一个号会让其中一个变成假话。
+
+**Magisk 模块 zip 不是"把模块目录压一下"。** Magisk 要求 `module.prop` 在**归档根目录**、安装器在
+`META-INF/com/google/android/`，而它表达这个要求的方式就是"别的什么都不装"——这里第一个手打的 zip
+把模块套在了一层目录下、也没有安装器，那就是一个谁都刷不了的文件。所以脚本按这个形状打，**打完还会
+打开归档逐项核对**再报成功。条目时间戳固定，同一棵树打两次得到相同的字节。
+
 ```bash
 ./tools/gradle.sh assembleDebug
 ./tools/build-plugin.sh          # 示例插件 → tools/plugin-demo/build/plugin.b64
@@ -779,6 +795,10 @@ Zygisk-LSPosed 1.10.2 (7182) 上验证：
 - **在 `system_server` 里只留过观察型钩子。** 验证用的钩子挂在一个改不了任何行为的方法上。
   会在那里**改变行为**的钩子还没跑过，所以"装得上、能扛过重启"是成立的，"坏的那种也能被兜住"
   还不成立。
+- **发布 zip 没有真的经 Magisk 应用刷过。** 改为结构核对：`module.prop` 在归档根目录、安装器在、
+  以及那个 stub 唯一依赖的函数 `install_module` 确认存在于本机的 Magisk，版本代码也过了 stub
+  自己的门槛。真刷一次还会把副本暂存进 `/data/adb/modules_update/` 直到下次重启——为了一个"拆开
+  看已经能回答"的检查，往别人手机上留这种状态不值得。
 
 - **状态页上"故障"那一支没在屏幕上看到过。** 那个状态是真的——正是它引出了这次改动——但这台
   ROM 重新绑定服务太快，试了多种造法（SIGKILL、`force-stop`、应用停止时写设置）都没能把它

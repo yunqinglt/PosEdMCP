@@ -15,3 +15,9 @@ docs/*.png
 
 # CMake/Ninja output for the native library.
 app/.cxx/
+
+# Release artifacts, built by tools/release.sh. They are outputs, not sources:
+# the APK is reproducible from the tree and the module zip is the module
+# directory repacked, so keeping copies here would only give them somewhere to
+# go stale.
+dist/

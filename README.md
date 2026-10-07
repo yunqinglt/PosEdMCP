@@ -503,10 +503,11 @@ refusing it too would take away the one way left to look at what went wrong.
 
 ### `posedmcp-guard`
 
-The way out cannot live in this app, because the app is what may never get to run. It is a
-Magisk module in [`magisk/posedmcp-guard`](magisk/posedmcp-guard), installed with
-[`tools/install-guard.sh`](tools/install-guard.sh) — no zip, because a zip is an installer for
-an installer and `adb` is how everything else here reaches the device.
+The way out cannot live in this app, because the app is what may never get to run. It is a Magisk
+module in [`magisk/posedmcp-guard`](magisk/posedmcp-guard), and there are two ways in:
+[`tools/install-guard.sh`](tools/install-guard.sh) copies it over `adb`, which is how everything else
+here reaches the device, and the zip built by [`tools/release.sh`](tools/release.sh) is flashed in the
+Magisk app.
 
 ```
 post-fs-data.sh   counts kernel boots that never finished, before zygote is up
@@ -762,6 +763,25 @@ separate: the interface is the user's, and the tool surface is the model's.
 
 ## Development
 
+### Release artifacts
+
+[`tools/release.sh`](tools/release.sh) builds both of them into `dist/`:
+
+```
+dist/PosEdMCP-<versionName>.apk           the app, named with the app's own version
+dist/posedmcp-guard-<module version>.zip  the rescue module, named with its own
+```
+
+The two carry different versions on purpose: the app and the rescue module move on different
+schedules, and one number for both would make one of them a lie.
+
+**A Magisk module zip is not "the module directory, zipped".** Magisk wants `module.prop` at the root
+of the archive and an installer at `META-INF/com/google/android/`, and it expresses that only by
+refusing to install anything else — the first hand-made one here had the module nested under a
+directory and no installer at all, which is a file nobody can flash. So the script builds to that
+shape, then opens the archive and checks it against it before reporting success. Entry timestamps are
+fixed, so two builds of the same tree produce the same bytes.
+
 ```bash
 ./tools/gradle.sh assembleDebug
 ./tools/build-plugin.sh          # sample plugin → tools/plugin-demo/build/plugin.b64
@@ -977,6 +997,12 @@ Zygisk-LSPosed 1.10.2 (7182):
 - **Only an observing hook has been kept in `system_server`.** The verification used a hook on a
   method that cannot alter anything. One that *changes* behaviour there has not been run, so
   "it installs, and it survives a reboot" is established while "a bad one is survivable" is not.
+- **The release zip has never been through the Magisk app.** It is checked structurally instead:
+  `module.prop` at the root, the installer present, and the one function that installer stub calls —
+  `install_module` — confirmed to exist in this device's Magisk, with a version code that clears the
+  stub's own guard. Flashing it for real would also stage a copy into `/data/adb/modules_update/`
+  until the next reboot, which is a state change to leave on someone's phone for a check that
+  inspection already answers.
 
 - **The status tab's faulted branch has not been seen on screen.** The state is real — it is
   what prompted this — but this ROM re-binds the service quickly enough that it could not be

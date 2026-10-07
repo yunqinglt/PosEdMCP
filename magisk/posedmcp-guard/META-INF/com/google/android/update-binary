@@ -1,0 +1,37 @@
+#!/sbin/sh
+#
+# Magisk's installer stub. The Magisk app runs this out of the zip; it loads the
+# utility functions from the installed Magisk and hands the rest to
+# install_module, which unpacks the module into /data/adb/modules and runs
+# customize.sh if one exists.
+#
+# This file has to be here for the zip to be installable at all - a module zip is
+# not just the module's files. Without it the archive is something a person can
+# only install by unzipping it by hand, which is what tools/install-guard.sh does
+# over adb and is not what a release download is for.
+#
+# It refuses rather than half-installing: no Magisk, or a Magisk too old to have
+# util_functions.sh, gets a sentence and a non-zero exit.
+
+umask 022
+
+ui_print() { echo "$1"; }
+
+require_new_magisk() {
+    ui_print "*******************************"
+    ui_print " Please install Magisk v20.4+ "
+    ui_print "*******************************"
+    exit 1
+}
+
+OUTFD=$2
+ZIPFILE=$3
+
+mount /data 2>/dev/null
+
+[ -f /data/adb/magisk/util_functions.sh ] || require_new_magisk
+. /data/adb/magisk/util_functions.sh
+[ "$MAGISK_VER_CODE" -lt 20400 ] && require_new_magisk
+
+install_module
+exit 0
