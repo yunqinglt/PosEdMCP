@@ -644,6 +644,13 @@ dist/posedmcp-guard-<模块版本>.zip         救砖模块，用它自己的版
 
 ## 已知限制
 
+- **本机任何东西都够得到 MCP 端点。** 它只绑 loopback，所以别的应用都能连；而请求（连同请求体）
+  是在**校验 bearer token 之前**就解析完的，因此未认证的对端也能一路走到解析器。这就是为什么解析
+  的每一步都必须有界，而且**每道界都落在"读"这一侧而不是"检查"这一侧**：请求体由 `Content-Length`
+  和跨分块的累计量限制，请求头限的是 64 KiB **总量**而不只是每一行的长度，桥则由 `Wire` 里边读边卡。
+  **在分配之后才跑的防线，拦不住那次分配**——token 挡住的是这样一个对端*做成*什么，而不是它*尝试*，
+  因为到那一步字节早读进来了。
+
 - **system 路径的截图在本机不可用**。Android 16 移除了 `SurfaceControl.getPhysicalDisplayToken`
   和 `getPhysicalDisplayIds`——运行时枚举确认这两个方法在该设备的 framework 里根本不存在，
   不是反射写法问题。`ScreenCapture.captureDisplay` 需要一个 display token，而没有公开的

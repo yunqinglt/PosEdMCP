@@ -795,6 +795,15 @@ JDK 17+ is required (this project was verified with JDK 22).
 
 ## Known limitations
 
+- **Anything on the device can reach the MCP endpoint.** It binds to loopback, so every other app can
+  connect, and a request is parsed — body and all — before the bearer token is checked, so an
+  unauthenticated peer gets as far as the parser. That is why every step of the parsing is bounded,
+  and why each bound sits on the *reading* side rather than the checking side: the body by
+  `Content-Length` and by the running total across chunks, the headers by 64 KiB in total rather than
+  only per line, and the bridge by an incremental cap in `Wire`. A guard that runs after the
+  allocation cannot prevent the allocation — the token is what stops such a peer *doing* anything, but
+  it is not what stops it trying, because by then the bytes have been read.
+
 - **The system screenshot route does not work on this device.** Android 16 removed
   `SurfaceControl.getPhysicalDisplayToken` and `getPhysicalDisplayIds` — runtime
   enumeration confirms neither method exists in this device's framework at all, so it is

@@ -135,7 +135,7 @@ public final class LuaRuntime {
         }
         long limit = maxInstructions > 0 ? maxInstructions : DEFAULT_MAX_INSTRUCTIONS;
 
-        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        CappedOutput captured = new CappedOutput(MAX_OUTPUT_CHARS);
         PrintStream out = new PrintStream(captured, true, "UTF-8");
 
         Budget budget = new Budget(limit);
@@ -1236,8 +1236,63 @@ public final class LuaRuntime {
         }
     }
 
+    /**
+     * A sink that stops keeping what it is told once it is full.
+     *
+     * <p>The output used to be capped by truncating the string afterwards, which
+     * meant all of it was in memory first. That is merely wasteful for one script
+     * run; for a kept hook it never ended. The closure holds this stream for the
+     * life of the process, and after {@code exec} returns nothing reads it again -
+     * so a hook that printed on every call grew it without limit, in someone
+     * else's process, with the instruction budget no defence at all because each
+     * call is a separate run.
+     *
+     * <p>It counts bytes where the constant says characters, so multi-byte text is
+     * cut a little sooner than the number promises. That is the right direction for
+     * a guard to be wrong in.
+     */
+    private static final class CappedOutput extends java.io.OutputStream {
+        private final int limit;
+        private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        private boolean dropped;
+
+        CappedOutput(int limit) {
+            this.limit = limit;
+        }
+
+        @Override
+        public void write(int b) {
+            if (buffer.size() < limit) {
+                buffer.write(b);
+            } else {
+                dropped = true;
+            }
+        }
+
+        @Override
+        public void write(byte[] bytes, int offset, int length) {
+            int room = limit - buffer.size();
+            if (room <= 0) {
+                dropped = true;
+                return;
+            }
+            if (length > room) {
+                buffer.write(bytes, offset, room);
+                dropped = true;
+            } else {
+                buffer.write(bytes, offset, length);
+            }
+        }
+
+        String text() {
+            String captured = new String(buffer.toByteArray(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            return dropped ? captured + "\n... output truncated" : captured;
+        }
+    }
+
     private static JSONObject result(boolean ok, Object returned, String error,
-            ByteArrayOutputStream captured, Budget budget, long startedAt,
+            CappedOutput captured, Budget budget, long startedAt,
             List<JSONObject> installed) throws Exception {
         JSONObject out = new JSONObject();
         out.put("ok", ok);
@@ -1246,9 +1301,7 @@ public final class LuaRuntime {
         } else {
             out.put("error", error == null ? "unknown error" : error);
         }
-        String output = captured.toString("UTF-8");
-        out.put("output", output.length() <= MAX_OUTPUT_CHARS ? output
-                : output.substring(0, MAX_OUTPUT_CHARS) + "\n... output truncated");
+        out.put("output", captured.text());
         out.put("instructions", budget.used());
         out.put("maxInstructions", budget.limit());
         out.put("durationMs", System.currentTimeMillis() - startedAt);

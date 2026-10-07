@@ -41,6 +41,17 @@ public final class HttpTransport {
 
     public static final int MAX_BODY_BYTES = 16 << 20;
 
+    /**
+     * How much room the request line and headers get together.
+     *
+     * <p>Each line is already capped at 64 KiB by {@link #readLine}, but nothing
+     * capped how many there were - and every one of them was kept. A limit on each
+     * item is not a limit on the collection: the count is the peer's, and a peer
+     * that only ever sends headers can keep sending them until the socket times
+     * out. Real requests from MCP clients are a few hundred bytes.
+     */
+    private static final int MAX_HEADER_BYTES = 64 * 1024;
+
     public interface Router {
         Response route(Request request);
     }
@@ -267,7 +278,12 @@ public final class HttpTransport {
 
         Map<String, String> headers = new HashMap<>();
         String line;
+        int headerBytes = requestLine.length() + 2;
         while ((line = readLine(in)) != null && !line.isEmpty()) {
+            headerBytes += line.length() + 2;
+            if (headerBytes > MAX_HEADER_BYTES) {
+                throw new IOException("request headers exceed " + MAX_HEADER_BYTES + " bytes");
+            }
             int colon = line.indexOf(':');
             if (colon > 0) {
                 headers.put(line.substring(0, colon).trim().toLowerCase(Locale.ROOT),
@@ -385,6 +401,9 @@ public final class HttpTransport {
             } catch (NumberFormatException e) {
                 throw new IOException("bad chunk size: " + sizeLine);
             }
+            if (size < 0) {
+                throw new IOException("bad chunk size: " + sizeLine);
+            }
             if (size == 0) {
                 while (true) {
                     String trailer = readLine(in);
@@ -394,11 +413,19 @@ public final class HttpTransport {
                 }
                 break;
             }
-            buffer.write(readExactly(in, size));
-            readLine(in);
-            if (buffer.size() > MAX_BODY_BYTES) {
+            // The size is the peer's, so it is judged before anything is allocated
+            // for it. It used to be read first and compared afterwards, which made
+            // this guard unable to prevent the thing it names: a header reading
+            // "7fffffff" asked for a two-gigabyte array, and read into it, before
+            // any check looked at the total. The request body is parsed to build
+            // the request, which happens before the bearer token is checked, so a
+            // peer need not be authenticated to try this - and the endpoint is on
+            // loopback, which every other app on the device can reach.
+            if (size > MAX_BODY_BYTES - buffer.size()) {
                 throw new IOException("chunked body too large");
             }
+            buffer.write(readExactly(in, size));
+            readLine(in);
         }
         return buffer.toByteArray();
     }
