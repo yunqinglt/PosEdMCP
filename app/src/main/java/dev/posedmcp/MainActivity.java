@@ -32,6 +32,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.color.MaterialColors;
@@ -57,6 +58,7 @@ import dev.posedmcp.a11y.AccessibilityBridge;
 import dev.posedmcp.a11y.AccessibilityRepair;
 import dev.posedmcp.ipc.BridgeCredentials;
 import dev.posedmcp.mcp.McpTool;
+import dev.posedmcp.root.ProbeWindow;
 import dev.posedmcp.state.HookGuard;
 import dev.posedmcp.state.HookStore;
 import dev.posedmcp.state.Prefs;
@@ -296,6 +298,10 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        content.addView(section(getString(R.string.probe_section)));
+        content.addView(body(getString(R.string.probe_intro)));
+        content.addView(probeCard());
+
         specialDialog = new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.special_settings)
                 .setView(scrolled(content))
@@ -394,6 +400,84 @@ public class MainActivity extends AppCompatActivity {
         }
         renderHooks();
         showSpecialSettings();
+    }
+
+    /**
+     * The manual probe: the floating button that freezes the app in front.
+     *
+     * <p>Everything about starting a freeze lives behind that button - nothing
+     * on this card, and no tool, can start one. The agent's side of the probe
+     * (reading the frozen state, asking for the release) is a separate matter;
+     * this card is the user's side only.
+     */
+    private View probeCard() {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setCardElevation(dp(1));
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardParams.topMargin = dp(16);
+        card.setLayoutParams(cardParams);
+
+        LinearLayout inner = new LinearLayout(this);
+        inner.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(16);
+        inner.setPadding(pad, pad, pad, pad);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = new TextView(this);
+        label.setText(R.string.probe_window_label);
+        label.setTextAppearance(com.google.android.material.R.style
+                .TextAppearance_Material3_BodyLarge);
+        row.addView(label, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        MaterialSwitch toggle = new MaterialSwitch(this);
+        toggle.setChecked(Prefs.of(this).probeWindowEnabled());
+        toggle.setOnCheckedChangeListener((v, on) -> {
+            if (on && !Settings.canDrawOverlays(this)) {
+                // The window cannot exist without this; offering the switch as
+                // if it could would be describing a state the phone is not in.
+                toast(getString(R.string.toast_probe_refused_overlay));
+                ((MaterialSwitch) v).setChecked(false);
+                return;
+            }
+            Prefs.of(this).setProbeWindowEnabled(on);
+            if (on) {
+                ProbeWindow.show(this);
+            } else {
+                ProbeWindow.dismiss();
+            }
+        });
+        row.addView(toggle);
+        inner.addView(row);
+
+        inner.addView(caption(getString(R.string.probe_duration_label)));
+
+        MaterialButtonToggleGroup group = new MaterialButtonToggleGroup(this);
+        group.setSingleSelection(true);
+        group.setSelectionRequired(true);
+        int[] seconds = Prefs.PROBE_FREEZE_CHOICES;
+        int[] labels = {R.string.probe_duration_30s, R.string.probe_duration_60s,
+                R.string.probe_duration_300s};
+        for (int i = 0; i < seconds.length; i++) {
+            MaterialButton choice = new MaterialButton(this, null,
+                    com.google.android.material.R.attr.materialButtonOutlinedStyle);
+            choice.setText(labels[i]);
+            choice.setAllCaps(false);
+            group.addView(choice, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            if (Prefs.of(this).probeFreezeSeconds() == seconds[i]) {
+                choice.setChecked(true);
+            }
+            final int secs = seconds[i];
+            choice.setOnClickListener(v -> Prefs.of(this).setProbeFreezeSeconds(secs));
+        }
+        inner.addView(group, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        card.addView(inner);
+        return card;
     }
 
     // ---- about -------------------------------------------------------------

@@ -25,6 +25,7 @@ import dev.posedmcp.mcp.McpTool;
 import dev.posedmcp.mcp.ToolRegistry;
 import dev.posedmcp.root.AuditNotifier;
 import dev.posedmcp.root.ConfirmationGate;
+import dev.posedmcp.root.ProbeWindow;
 import dev.posedmcp.state.DeviceStatus;
 import dev.posedmcp.state.EventStore;
 import dev.posedmcp.state.HookRecordStore;
@@ -90,6 +91,7 @@ public final class McpService extends Service {
     private BridgeServer bridge;
     private McpServer mcp;
     private ToolRegistry tools;
+    private Capabilities capabilities;
 
     public static McpService instance() {
         return instance;
@@ -133,7 +135,36 @@ public final class McpService extends Service {
         }
         // Mirror the bridge credentials where hooked processes can reach them.
         BridgeCredentials.publish(this, prefs.bridgeToken(), prefs.bridgePort());
+        // The probe button is an overlay of this process, so a ROM kill takes
+        // it with us; the user's choice to have it on screen has to survive
+        // that the way every other piece of this app does.
+        if (prefs.probeWindowEnabled()) {
+            ProbeWindow.show(getApplicationContext());
+        }
         ensureChannel();
+    }
+
+    /**
+     * The package currently in front, as the module's poller last saw it, or
+     * null. The poller reports the package and the top activity together
+     * ("pkg/Activity"), so the component half is stripped here.
+     */
+    public String foregroundPackage() {
+        Capabilities caps = capabilities;
+        if (caps == null) {
+            return null;
+        }
+        try {
+            String pkg = caps.systemForeground().optString("foreground", "");
+            int slash = pkg.indexOf('/');
+            if (slash >= 0) {
+                pkg = pkg.substring(0, slash);
+            }
+            return pkg.isEmpty() ? null : pkg;
+        } catch (Throwable t) {
+            Logx.w("probe: systemForeground failed: " + t);
+            return null;
+        }
     }
 
     @Override
@@ -182,8 +213,9 @@ public final class McpService extends Service {
                     this::trustPeer, this::onPeerReady);
             bridge.start();
 
-            Capabilities capabilities = new Capabilities(this, bridge);
-            tools = new ToolRegistry(this, prefs, capabilities, bridge, events, hookRecords);
+            Capabilities caps = new Capabilities(this, bridge);
+            capabilities = caps;
+            tools = new ToolRegistry(this, prefs, caps, bridge, events, hookRecords);
             mcp = new McpServer(this, prefs, tools, events);
             mcp.start();
 

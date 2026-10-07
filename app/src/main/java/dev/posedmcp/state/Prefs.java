@@ -28,6 +28,9 @@ public final class Prefs {
     private static final String KEY_AUTOSTART = "autostart";
     private static final String KEY_HANDOFF_UNTIL = "handoff_until";
     private static final String KEY_HANDOFF_BOOT = "handoff_boot";
+    private static final String KEY_PROBE_WINDOW = "probe_window";
+    private static final String KEY_PROBE_FREEZE_SECONDS = "probe_freeze_seconds";
+    private static final String KEY_PROBE_STATE = "probe_state";
 
     /** How far the boot wall-clock has to move before it counts as a reboot. */
     private static final long BOOT_SLACK_MS = 120_000L;
@@ -224,5 +227,47 @@ public final class Prefs {
                 .putString(KEY_MCP_TOKEN, randomToken())
                 .putString(KEY_BRIDGE_TOKEN, randomToken())
                 .commit();
+    }
+
+    // ---- the manual probe ------------------------------------------------
+
+    /** How long one probe freeze lasts when nothing releases it earlier. */
+    public static final int DEFAULT_PROBE_FREEZE_SECONDS = 60;
+    /** The durations offered in Special settings. */
+    public static final int[] PROBE_FREEZE_CHOICES = {30, 60, 300};
+
+    /** Whether the floating probe button is on screen. */
+    public boolean probeWindowEnabled() {
+        return sp.getBoolean(KEY_PROBE_WINDOW, false);
+    }
+
+    public void setProbeWindowEnabled(boolean value) {
+        sp.edit().putBoolean(KEY_PROBE_WINDOW, value).apply();
+    }
+
+    public int probeFreezeSeconds() {
+        return sp.getInt(KEY_PROBE_FREEZE_SECONDS, DEFAULT_PROBE_FREEZE_SECONDS);
+    }
+
+    public void setProbeFreezeSeconds(int seconds) {
+        sp.edit().putInt(KEY_PROBE_FREEZE_SECONDS, seconds).apply();
+    }
+
+    /**
+     * The frozen-app record, or null. Committed synchronously: the record has
+     * to survive this process being killed - the watchdog releases the app at
+     * the deadline either way, but only this record lets a restarted process
+     * say who is frozen and release them early.
+     */
+    public String probeStateJson() {
+        return sp.getString(KEY_PROBE_STATE, null);
+    }
+
+    public void setProbeStateJson(String json) {
+        sp.edit().putString(KEY_PROBE_STATE, json).commit();
+    }
+
+    public void clearProbeState() {
+        sp.edit().remove(KEY_PROBE_STATE).commit();
     }
 }

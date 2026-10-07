@@ -253,4 +253,25 @@ Once it is on, it can be paused here at any time but not deleted - and the rescu
     <string name="toast_special_on">Released. It is in the system framework as soon as the module is loaded there.</string>
     <string name="toast_special_missing">This build has no script for that countermeasure.</string>
     <string name="toast_special_off">Paused. Nothing is hooked any more.</string>
+
+    <!-- The manual probe -->
+    <string name="probe_section">PROBE</string>
+    <string name="probe_intro">A floating button that freezes the app in front, so a screen that would be gone by the time you look - a splash ad, a transient dialog - stays put while it is inspected. Only your tap freezes: the agent can read the frozen state and ask for the release, but it can never start one. The app stays frozen until you press the button again, the agent asks, or the time runs out and a detached root watchdog lets it go.</string>
+    <string name="probe_window_label">Show the probe button</string>
+    <string name="probe_duration_label">Freeze duration</string>
+    <string name="probe_duration_30s">30 s</string>
+    <string name="probe_duration_60s">1 min</string>
+    <string name="probe_duration_300s">5 min</string>
+    <string name="probe_pill_freeze">Freeze</string>
+    <string name="probe_pill_resume">Resume %1$s</string>
+    <string name="toast_probe_frozen">Frozen %1$s - it releases itself in %2$s</string>
+    <string name="toast_probe_resumed">Resumed %1$s</string>
+    <string name="toast_probe_freeze_failed">Freeze failed: %1$s</string>
+    <string name="toast_probe_refused_overlay">Grant the overlay permission first</string>
+    <string name="toast_probe_refused_a11y">Accessibility is not connected - the probe button would go silent</string>
+    <string name="toast_probe_refused_system">Refusing to freeze the system interface</string>
+    <string name="toast_probe_refused_self">Refusing to freeze 奈何桥</string>
+    <string name="toast_probe_refused_no_process">%1$s has no live process</string>
+    <string name="toast_probe_refused_busy">%1$s is already frozen</string>
+    <string name="toast_probe_refused_no_foreground">Could not tell which app is in front</string>
 </resources>

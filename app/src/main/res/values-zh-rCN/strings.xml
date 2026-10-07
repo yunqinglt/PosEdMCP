@@ -258,4 +258,25 @@
     <string name="toast_special_on">已释放。模块一旦在系统框架里加载，它就生效。</string>
     <string name="toast_special_missing">这个版本里没有那条反制措施的脚本。</string>
     <string name="toast_special_off">已挂起，不再注入任何东西。</string>
+
+    <!-- 手动探针 -->
+    <string name="probe_section">探针</string>
+    <string name="probe_intro">一个悬浮按钮，把当前前台应用冻住——开屏广告、一闪而过的弹窗，等你回头看时已经没了的东西，都能定在屏幕上慢慢看。只有你的点击会冻结：agent 只能读冻结状态、请求解冻，永远不能发起冻结。应用会一直冻着，直到你再按一下按钮、agent 请求解冻，或者时间到了由脱离奈何桥的 root 看门狗把它放走。</string>
+    <string name="probe_window_label">显示探针悬浮按钮</string>
+    <string name="probe_duration_label">冻结时长</string>
+    <string name="probe_duration_30s">30 秒</string>
+    <string name="probe_duration_60s">1 分钟</string>
+    <string name="probe_duration_300s">5 分钟</string>
+    <string name="probe_pill_freeze">冻结</string>
+    <string name="probe_pill_resume">继续 %1$s</string>
+    <string name="toast_probe_frozen">已冻结 %1$s，%2$s 后自动恢复</string>
+    <string name="toast_probe_resumed">已恢复 %1$s</string>
+    <string name="toast_probe_freeze_failed">冻结失败：%1$s</string>
+    <string name="toast_probe_refused_overlay">请先授予悬浮窗权限</string>
+    <string name="toast_probe_refused_a11y">无障碍未连接——探针按钮会失去响应</string>
+    <string name="toast_probe_refused_system">拒绝冻结系统界面</string>
+    <string name="toast_probe_refused_self">拒绝冻结奈何桥</string>
+    <string name="toast_probe_refused_no_process">%1$s 没有在运行的进程</string>
+    <string name="toast_probe_refused_busy">%1$s 已经被冻住了</string>
+    <string name="toast_probe_refused_no_foreground">判断不出前台是哪个应用</string>
 </resources>
