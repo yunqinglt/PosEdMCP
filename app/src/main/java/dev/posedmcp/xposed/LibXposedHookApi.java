@@ -174,7 +174,19 @@ public final class LibXposedHookApi implements HookApi {
         if (params.answered) {
             // setResult() from before() means "do not run the original", which is
             // the one thing the chain model expresses by simply not proceeding.
-            return params.result;
+            //
+            // after() still has to run, and that is not a formality: the record of
+            // a call is closed there. Returning straight from here left a hook
+            // that answers for a method with no trace in hook_records at all -
+            // measured on a HyperOS one-tap clean, where the countermeasure
+            // refused a force-stop and the log said so while the record list held
+            // only the calls that had been let through. A blocked call looking
+            // exactly like one that never arrived is the answer this module exists
+            // not to give. The classic backend calls both halves, so this only
+            // brings the two level.
+            Object chosen = params.result;
+            callback.after(params);
+            return params.answered ? params.result : chosen;
         }
 
         try {
