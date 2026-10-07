@@ -1287,6 +1287,15 @@ public final class ToolRegistry {
                             throw new McpTool.ToolError("the hook with id '" + id + "' is kept for "
                                     + one.packageName + ", not " + pkg + ". Nothing was removed.");
                         }
+                        if (one.isSpecial()) {
+                            // Refused rather than quietly skipped: an agent that asked
+                            // for this hook by id is owed an answer, and the answer is
+                            // that this one belongs to the app rather than to it.
+                            throw new McpTool.ToolError("that hook is one of this app's own"
+                                    + " countermeasures, not a hook you registered. The user can"
+                                    + " pause it in Special settings, and nothing can delete it."
+                                    + " Nothing was removed.");
+                        }
                     }
 
                     requireConfirmation(ConfirmationGate.Kind.PLUGIN,
@@ -2039,6 +2048,15 @@ public final class ToolRegistry {
         String needle = subject == null ? "" : subject.toLowerCase(Locale.ROOT);
         JSONArray gone = new JSONArray();
         for (SavedHook hook : store.forPackage(pkg)) {
+            if (hook.isSpecial()) {
+                // This app's own countermeasures are not an agent's to remove. They
+                // are kept in the same library so that they come back after a
+                // restart, and the switch in Special settings can pause one - but
+                // deleting is not offered there either, on purpose: a
+                // countermeasure that can be removed by accident is one somebody
+                // then has to work out how to restore.
+                continue;
+            }
             if (needle.isEmpty() || hook.target().toLowerCase(Locale.ROOT).contains(needle)) {
                 store.delete(hook.id);
                 gone.put(hook.target());

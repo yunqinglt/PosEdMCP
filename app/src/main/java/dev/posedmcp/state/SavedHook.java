@@ -61,6 +61,28 @@ public final class SavedHook {
     /** Off means it is kept but not pushed to any process. */
     public boolean enabled = true;
 
+    /**
+     * The id of the special hook this is, or empty for an ordinary one.
+     *
+     * <p>A special hook ships inside this APK (see {@link SpecialHooks}) and is
+     * put into the library by a switch rather than by an agent. That makes it a
+     * different kind of thing to own: the user turns it on and off, but does not
+     * delete it - so the Hooks page leaves it out entirely and {@code hook_clear}
+     * refuses to touch it.
+     *
+     * <p>It still lives in the library rather than only in its asset, because
+     * that is what arms it again after every restart without anything else
+     * having to carry it. The asset is the source it is built from, and is
+     * re-read whenever the app starts, so an update to the script takes effect
+     * on the next start rather than on the next time someone toggles it.
+     */
+    public String special = "";
+
+    /** Whether this is one of the special hooks rather than one an agent made. */
+    public boolean isSpecial() {
+        return special != null && !special.isEmpty();
+    }
+
     public long createdAt;
     public long updatedAt;
     /** Zero until a process has accepted this hook at least once. */
@@ -96,6 +118,7 @@ public final class SavedHook {
         h.source = o.optString("source", "");
         h.effect = o.optString("effect", "");
         h.enabled = o.optBoolean("enabled", true);
+        h.special = o.optString("special", "");
         h.createdAt = o.optLong("createdAt", 0L);
         h.updatedAt = o.optLong("updatedAt", 0L);
         h.lastAppliedAt = o.optLong("lastAppliedAt", 0L);
@@ -116,6 +139,7 @@ public final class SavedHook {
         o.put("source", source);
         o.put("effect", effect);
         o.put("enabled", enabled);
+        o.put("special", special == null ? "" : special);
         o.put("createdAt", createdAt);
         o.put("updatedAt", updatedAt);
         o.put("lastAppliedAt", lastAppliedAt);

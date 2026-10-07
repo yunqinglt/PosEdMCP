@@ -33,6 +33,7 @@ import dev.posedmcp.state.Prefs;
 import dev.posedmcp.state.SavedHook;
 import dev.posedmcp.tools.Capabilities;
 import dev.posedmcp.tools.HookDeploy;
+import dev.posedmcp.tools.SpecialHooks;
 
 /**
  * Keeps the MCP endpoint and the device bridge alive.
@@ -165,6 +166,9 @@ public final class McpService extends Service {
             return;
         }
         try {
+            // Before anything arms a hook: a countermeasure whose script changed in
+            // this build has to be re-read before some process gets the old one.
+            SpecialHooks.refresh(this);
             events = new EventStore();
             // Hook records are kept apart from the event feed and on disk: they
             // are produced by processes that may be gone before anyone reads

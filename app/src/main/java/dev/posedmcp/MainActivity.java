@@ -30,6 +30,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.color.DynamicColors;
@@ -41,6 +42,9 @@ import com.google.android.material.shape.CornerFamily;
 import com.google.android.material.shape.ShapeAppearanceModel;
 import com.google.android.material.tabs.TabLayout;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.json.JSONObject;
 
 import java.text.DateFormat;
@@ -59,6 +63,7 @@ import dev.posedmcp.state.Prefs;
 import dev.posedmcp.state.SavedHook;
 import dev.posedmcp.state.SavedScript;
 import dev.posedmcp.state.ScriptStore;
+import dev.posedmcp.tools.SpecialHooks;
 import dev.posedmcp.xposed.LuaRuntime;
 
 /**
@@ -178,13 +183,13 @@ public class MainActivity extends AppCompatActivity {
         // After setContentView, so the tint is resolved against a view that is
         // already carrying the theme.
         toolbar.inflateMenu(R.menu.main);
-        MenuItem about = toolbar.getMenu().findItem(R.id.action_about);
-        if (about != null && about.getIcon() != null) {
-            about.getIcon().setTint(color(com.google.android.material.R.attr.colorOnSurface));
+        MenuItem more = toolbar.getMenu().findItem(R.id.action_more);
+        if (more != null && more.getIcon() != null) {
+            more.getIcon().setTint(color(com.google.android.material.R.attr.colorOnSurface));
         }
         toolbar.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.action_about) {
-                showAbout();
+            if (item.getItemId() == R.id.action_more) {
+                showMoreInfo();
                 return true;
             }
             return false;
@@ -218,6 +223,177 @@ public class MainActivity extends AppCompatActivity {
     private void selectTab(int index) {
         tabContent.removeAllViews();
         tabContent.addView(index == 0 ? statusScroll : index == 1 ? scriptsScroll : hooksScroll);
+    }
+
+    // ---- more info ---------------------------------------------------------
+
+    /**
+     * The two things behind the toolbar button, in a sheet.
+     *
+     * <p>A sheet rather than two toolbar icons, because the two are not alike.
+     * About is read once and forgotten; Special settings can stop the system
+     * killing this app, and that is a control that should take a deliberate step
+     * to reach rather than sit one tap away on the toolbar.
+     */
+    private void showMoreInfo() {
+        BottomSheetDialog sheet = new BottomSheetDialog(this);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(0, dp(8), 0, dp(12));
+        content.addView(sheetRow(R.string.about, sheet, this::showAbout));
+        content.addView(sheetRow(R.string.special_settings, sheet, this::showSpecialSettings));
+        sheet.setContentView(content);
+        sheet.show();
+    }
+
+    private View sheetRow(int labelRes, BottomSheetDialog sheet, Runnable action) {
+        TextView row = new TextView(this);
+        row.setText(labelRes);
+        row.setTextAppearance(com.google.android.material.R.style
+                .TextAppearance_Material3_BodyLarge);
+        row.setPadding(dp(24), dp(18), dp(24), dp(18));
+        row.setClickable(true);
+        TypedValue ripple = new TypedValue();
+        getTheme().resolveAttribute(android.R.attr.selectableItemBackground, ripple, true);
+        row.setBackgroundResource(ripple.resourceId);
+        row.setOnClickListener(v -> {
+            sheet.dismiss();
+            action.run();
+        });
+        return row;
+    }
+
+    // ---- special settings --------------------------------------------------
+
+    /** Kept so a change can replace the dialog it was made in. */
+    private AlertDialog specialDialog;
+
+    /**
+     * The countermeasures that ship inside this APK.
+     *
+     * <p>What is offered depends on the phone: each one is written against a
+     * particular manufacturer's background-app killer, and a switch for a killer
+     * this phone does not have would be a switch that does nothing. So this asks
+     * whether the component the countermeasure is about is installed, rather
+     * than trying to read a ROM name out of a property.
+     */
+    private void showSpecialSettings() {
+        if (specialDialog != null) {
+            specialDialog.dismiss();
+            specialDialog = null;
+        }
+
+        LinearLayout content = column();
+        content.addView(body(getString(R.string.special_intro)));
+
+        List<SpecialHooks.Spec> specs = SpecialHooks.available(this);
+        if (specs.isEmpty()) {
+            content.addView(section(getString(R.string.special_settings)));
+            content.addView(body(getString(R.string.special_none)));
+        } else {
+            for (SpecialHooks.Spec spec : specs) {
+                content.addView(specialCard(spec));
+            }
+        }
+
+        specialDialog = new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.special_settings)
+                .setView(scrolled(content))
+                .setPositiveButton(R.string.action_close, null)
+                .show();
+    }
+
+    /**
+     * One countermeasure: what it does, whether it is on, and the one control.
+     *
+     * <p>There is no delete here, and the Hooks page does not show these either.
+     * Turning one off leaves it in the library and out of every process; a
+     * countermeasure somebody can remove by accident is one they then have to
+     * remember how to put back.
+     */
+    private View specialCard(SpecialHooks.Spec spec) {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setCardElevation(dp(1));
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardParams.topMargin = dp(16);
+        card.setLayoutParams(cardParams);
+
+        LinearLayout inner = new LinearLayout(this);
+        inner.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(16);
+        inner.setPadding(pad, pad, pad, dp(12));
+
+        inner.addView(title(getString(spec.titleRes)));
+        inner.addView(body(getString(spec.blurbRes)));
+
+        SavedHook stored = SpecialHooks.stored(this, spec);
+        boolean on = stored != null && stored.enabled;
+        String state = stored == null ? getString(R.string.special_state_never)
+                : getString(on ? R.string.special_state_on : R.string.special_state_off);
+        inner.addView(caption(state));
+
+        MaterialButton action = tonalButton(
+                getString(on ? R.string.special_pause
+                        : stored == null ? R.string.special_arm_confirm
+                                : R.string.special_resume),
+                v -> {
+                    if (on) {
+                        setSpecial(spec, false);
+                    } else {
+                        confirmSpecial(spec);
+                    }
+                });
+        inner.addView(action);
+
+        card.addView(inner);
+        return card;
+    }
+
+    /**
+     * What the user has to have done before this switch can mean anything.
+     *
+     * <p>Said here rather than in the blurb because it is the part that is easy
+     * to skip: the hook lives in the system framework, so the module has to be
+     * scoped to that process and the phone has to have been restarted since.
+     * Otherwise the switch reads "on" while nothing is hooked, which is the
+     * worst of both answers.
+     */
+    private void confirmSpecial(SpecialHooks.Spec spec) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.special_arm_title)
+                .setMessage(getString(R.string.special_arm_body,
+                        getString(R.string.special_scope_system)))
+                .setNegativeButton(R.string.special_arm_cancel, null)
+                .setPositiveButton(R.string.special_arm_confirm, (d, w) -> setSpecial(spec, true))
+                .show();
+    }
+
+    private void setSpecial(SpecialHooks.Spec spec, boolean on) {
+        McpService service = McpService.instance();
+        boolean running = service != null && service.isRunning();
+
+        if (on) {
+            SavedHook hook = SpecialHooks.turnOn(this, spec);
+            if (hook == null) {
+                toast(getString(R.string.toast_special_missing));
+                return;
+            }
+            // Into the processes that are up right now: a switch that only took
+            // effect at the next restart would be describing a state it is not in.
+            if (running) {
+                service.armHook(hook);
+            }
+            toast(getString(R.string.toast_special_on));
+        } else {
+            SavedHook hook = SpecialHooks.turnOff(this, spec);
+            if (hook != null && running) {
+                service.disarmHook(hook);
+            }
+            toast(getString(R.string.toast_special_off));
+        }
+        renderHooks();
+        showSpecialSettings();
     }
 
     // ---- about -------------------------------------------------------------
@@ -844,8 +1020,27 @@ public class MainActivity extends AppCompatActivity {
                     ? R.string.hooks_guard_installed : R.string.hooks_guard_missing)));
         }
 
+        // The countermeasures this app ships are kept in the same library - that
+        // is what arms them again after every restart - but this page is not
+        // theirs to show. They are not hooks an agent made, they are not aimed
+        // at an application, and there is no deleting them; Special settings is
+        // the only place they appear, and it is the only place that can touch
+        // them. A package left with nothing else to show disappears with them.
         HookStore store = HookStore.of(this);
-        List<String> packages = store.packages();
+        List<String> packages = new ArrayList<>();
+        Map<String, List<SavedHook>> shown = new LinkedHashMap<>();
+        for (String pkg : store.packages()) {
+            List<SavedHook> ordinary = new ArrayList<>();
+            for (SavedHook hook : store.forPackage(pkg)) {
+                if (!hook.isSpecial()) {
+                    ordinary.add(hook);
+                }
+            }
+            if (!ordinary.isEmpty()) {
+                packages.add(pkg);
+                shown.put(pkg, ordinary);
+            }
+        }
         if (packages.isEmpty()) {
             hooksContent.addView(section(getString(R.string.section_nothing_registered)));
             hooksContent.addView(body(getString(R.string.hooks_empty_body)));
@@ -855,7 +1050,7 @@ public class MainActivity extends AppCompatActivity {
         hooksContent.addView(section(getResources().getQuantityString(
                 R.plurals.apps_count, packages.size(), packages.size())));
         for (String pkg : packages) {
-            hooksContent.addView(hookCard(pkg, store.forPackage(pkg)));
+            hooksContent.addView(hookCard(pkg, shown.get(pkg)));
         }
     }
 

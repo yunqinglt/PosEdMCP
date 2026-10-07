@@ -4,12 +4,16 @@
   honours the android namespace; a Toolbar reads the support-library attribute,
   and without it the item silently lands in the overflow menu - which looks like
   an icon that never got added.
+
+  One button, two things behind it. Special settings can stop the system killing
+  this app, and a control like that sitting one tap away on the toolbar is a
+  control somebody hits by accident - so it is one step further in.
 -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
-        android:id="@+id/action_about"
+        android:id="@+id/action_more"
         android:icon="@drawable/ic_about"
-        android:title="@string/about"
+        android:title="@string/more_info"
         app:showAsAction="always" />
 </menu>

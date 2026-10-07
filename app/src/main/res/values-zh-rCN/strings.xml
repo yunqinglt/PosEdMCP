@@ -226,4 +226,36 @@
     <string name="peer_confirm_title">应用想要连接</string>
     <string name="peer_confirm_body">这个应用里跑着奈何桥模块，它请求使用设备桥。允许它会带来两个后果：该应用里的模块从此可以接收注入的代码、并向你报告事件。它本身并不授予任何设备控制权——每一个这样的动作仍会单独问你。</string>
     <string name="peer_approve_label">奈何桥</string>
+
+    <!-- 右上角那个按钮，以及它后面的两项 -->
+    <string name="more_info">更多信息</string>
+    <string name="special_settings">特殊设置…</string>
+
+    <!-- 特殊设置：随 APK 内置的反制措施 -->
+    <string name="special_intro">这是奈何桥自带的、用来反制系统在后台杀它的东西。它们不是模型装的钩子：不会出现在 Hooks 页面，也删不掉——只能挂起。每一条都指向系统框架，所以这里出错就是在整个手机所依赖的那个进程里出错。</string>
+    <string name="special_none">这台机器上还没有写好的反制措施。这些都是针对特定厂商的后台清理机制写的，而这个系统不在其中。MIUI 那套正在测；ColorOS 那套已经有了。</string>
+    <string name="special_athena_title">反制雅典娜（危险）</string>
+    <string name="special_athena_blurb">ColorOS 会在背后强停应用：动手的是雅典娜，理由写作 \'o-stop\'，触发点是"从最近任务划掉"和"息屏清理"。打开后它不能再这样对待奈何桥，对其它应用则照旧。</string>
+
+    <string name="special_powerkeeper_title">澎湃优化（危险）</string>
+    <string name="special_powerkeeper_blurb">澎湃 OS 会在背后强停应用，而且入口不止一个：一键清理、息屏清理、上划清理。它们最后都落到系统里同一个地方，各带一个自己的理由——OneKeyClean、LockScreenClean、SwipeUpClean 之类。打开后这些不再作用于奈何桥；其它应用、以及其它理由，一律照旧。</string>
+    <string name="special_state_on">已释放——已装进系统框架</string>
+    <string name="special_state_off">已挂起——保留着，但不在任何进程里</string>
+    <string name="special_state_never">从未打开过</string>
+    <string name="special_arm_title">确定要打开吗？</string>
+    <string name="special_arm_body">要让它真正生效，有两个条件：
+
+1. LSPosed 里模块的作用域必须勾上 %1$s——那是钩子真正待着的进程。
+
+2. 勾选之后必须重启过手机，否则模块并没有真的被装进那个进程，钩子也就没有地方可挂。
+
+打开之后，这里随时可以把它挂起，但删不掉；如果手机开始开不了机，救砖模块会自己把它挂起来。</string>
+    <string name="special_arm_confirm">打开</string>
+    <string name="special_arm_cancel">先不开</string>
+    <string name="special_pause">挂起</string>
+    <string name="special_resume">重新打开</string>
+    <string name="special_scope_system">系统框架（system_server）</string>
+    <string name="toast_special_on">已释放。模块一旦在系统框架里加载，它就生效。</string>
+    <string name="toast_special_missing">这个版本里没有那条反制措施的脚本。</string>
+    <string name="toast_special_off">已挂起，不再钩任何东西。</string>
 </resources>

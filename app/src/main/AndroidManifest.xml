@@ -9,6 +9,20 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
+      Special settings offers a switch per countermeasure, and only where the
+      component that countermeasure is about is installed - a switch for a
+      killer this phone does not have would do nothing. Answering that needs the
+      package to be visible: Android 11 and later hide other apps by default,
+      and measured, that hid com.miui.powerkeeper on HyperOS, so its switch was
+      never offered on the phone it was written for. Naming the few packages
+      involved is what makes the question answerable.
+    -->
+    <queries>
+        <package android:name="com.oplus.athena" />
+        <package android:name="com.miui.powerkeeper" />
+    </queries>
     <!--
       Without this, the platform freezes the process once the app is no longer
       on screen, and a frozen process stops accepting connections: the MCP
