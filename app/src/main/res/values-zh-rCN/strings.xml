@@ -33,7 +33,7 @@
     <string name="about_not_running">服务未运行</string>
     <string name="about_not_reported">尚未报告</string>
     <string name="about_reported_by">由 %1$s 报告</string>
-    <string name="about_start_an_app">启动任意一个在本模块作用域内的应用，它就会说出来</string>
+    <string name="about_start_an_app">启动任意一个在本模块作用域内的应用，它就会报告</string>
 
     <!-- Status tab -->
     <string name="section_status">状态</string>
@@ -56,7 +56,7 @@
     <string name="label_accessibility">无障碍</string>
     <string name="value_a11y_enabled">已启用</string>
     <string name="value_a11y_connecting">已打开，但还没连上</string>
-    <string name="value_a11y_stuck">开着但没有运行</string>
+    <string name="value_a11y_stuck">已启用但没有运行</string>
     <string name="value_a11y_off">未启用</string>
     <string name="body_a11y_stuck">它其实还开着，只是系统不再运行它，而且它不会自己连回来。这通常意味着本应用的进程被杀掉时（这台 ROM 会按自己的节奏做这件事），无障碍框架把这个服务标成了"出现故障"，之后就不再绑定它。设置里那个开关显示的仍然是开，所以在那里再"打开"一次没有任何作用：必须关掉再打开。上面的修复按钮做的就是这件事。</string>
     <string name="body_a11y_connecting">它已经打开，只是还没接上。这一页是快照而不是实时视图，所以应用刚重启时它会这样显示一会儿。如果一分钟后还是这样，那就是故障状态，用修复。</string>
@@ -83,14 +83,14 @@
     <string name="action_battery">电池</string>
     <string name="action_accessibility">无障碍</string>
     <string name="action_accessibility_settings">无障碍设置</string>
-    <string name="toast_overlay_settings_failed">打不开悬浮窗设置</string>
-    <string name="toast_turn_on_in_list">在列表里打开奈何桥</string>
-    <string name="toast_a11y_settings_failed">打不开无障碍设置</string>
-    <string name="toast_a11y_read_failed">读不到无障碍设置</string>
-    <string name="toast_battery_settings_failed">打不开电池设置</string>
+    <string name="toast_overlay_settings_failed">无法打开悬浮窗设置</string>
+    <string name="toast_turn_on_in_list">请在列表里打开奈何桥</string>
+    <string name="toast_a11y_settings_failed">无法打开无障碍设置</string>
+    <string name="toast_a11y_read_failed">无法读取无障碍设置</string>
+    <string name="toast_battery_settings_failed">无法打开电池设置</string>
 
     <string name="section_confirmation_policy">确认策略</string>
-    <string name="body_confirmation_policy">root shell 命令永远弹窗且不可关闭。其余的可以放宽，因为它们走的是模块的平台权限，而不是 shell。</string>
+    <string name="body_confirmation_policy">root shell 命令一定弹窗且不可关闭。其余的可以放宽，因为它们走的是模块的平台权限，而不是 shell。</string>
     <string name="toggle_confirm_screen">截屏和导出控件树需要确认</string>
     <string name="toggle_confirm_input">注入输入需要确认</string>
     <string name="toggle_confirm_plugin">加载和调用插件需要确认</string>
@@ -106,19 +106,19 @@
     <!-- Hand-off mode -->
     <string name="section_handoff">解放双手模式</string>
     <string name="handoff_line">开启中 — 还剩 %1$d:%2$s</string>
-    <string name="body_handoff_on">agent 调用的每个工具都会在被要求的瞬间执行，中间没有任何东西先看一眼——包括 root shell 命令。时间一到它会自己关掉，重启手机也会提前结束它。本应用被杀掉再拉起来不会——这台 ROM 会自己干这事，而因为一次内存回收就把窗口丢掉，对谁都没好处。</string>
+    <string name="body_handoff_on">agent 调用的每个工具都会在被要求的瞬间执行，中间没有任何东西先看一眼——包括 root shell 命令。时间一到它会自己关掉，重启手机也会提前结束它。本应用被杀掉再拉起来不会—— ROM 会自己干这事，而因为一次内存回收就把窗口丢掉，对谁都没好处。</string>
     <string name="action_extend_minutes">延长 %1$d 分钟</string>
     <string name="action_turn_off_now">立刻关掉</string>
-    <string name="body_handoff_intro">确认弹窗是挡在 agent 和这台设备之间的唯一一道。解放双手模式把它拿走：在一段时间里，每个动作都在被要求的瞬间执行。</string>
-    <string name="body_handoff_warning">它适用于你刻意让 agent 独自跑一长串动作的场合。它同时也是能让手机开不了机的模式，所以它会自己到期，而且没有办法让它常驻——只能重新开启。</string>
+    <string name="body_handoff_intro">确认弹窗是挡在 agent 和这台设备之间的唯一闸门。解放双手模式把它打开：在一段时间里，每个动作都在被要求的瞬间执行。</string>
+    <string name="body_handoff_warning">它适用于你刻意让 agent 独自跑一长串动作的场合。可能会导致手机变砖，具有危险性。所以它会自己到期，而且没有办法让它常驻——只能重新开启。</string>
     <string name="action_arm_handoff">开启解放双手模式…</string>
     <string name="handoff_warn1_title">解放双手模式：不再弹窗</string>
     <string name="handoff_warn1_body">开启期间，agent 调用的一切都会立即执行。root shell 命令、注入的点击和文本、加载进别的应用里的代码、当前屏幕上任何内容的截图——没有一样会先问你。</string>
-    <string name="handoff_warn2_title">这里面包括 root</string>
-    <string name="handoff_warn2_body">root shell 是唯一一个从一开始就不可关闭的东西，那是有意的——这个项目存在的理由就是它。解放双手模式把它也一起盖住了。</string>
-    <string name="handoff_warn3_title">这可能把手机弄坏</string>
+    <string name="handoff_warn2_title">这包括了 root</string>
+    <string name="handoff_warn2_body">root shell 是唯一一个从一开始就不可关闭的东西，那是有意的——这个项目存在的理由就是它。解放双手模式把它也一起覆盖了。</string>
+    <string name="handoff_warn3_title">这可能让你的设备变砖</string>
     <string name="handoff_warn3_body">一条删除文件、关掉系统组件或写入分区的命令，会完全按 agent 写的那样执行，中间没有任何东西。那可能让这台设备再也开不了机，而且没有撤销——审计日志记下了跑过什么，但它没法把东西放回去。</string>
-    <string name="handoff_type_body">在下面输入 %1$s 才能点亮按钮。口袋里的误触、点错一下、随手划到都不可能做到这件事——只有正在读这句话的你，可以。</string>
+    <string name="handoff_type_body">在下面输入 %1$s 才能点亮按钮。口袋里的误触、点错一下、随手划到都不可能做到这件事——只有正在读这句话的你可以。</string>
     <string name="handoff_type_title">输入 %1$s 以开启</string>
     <string name="action_arm_minutes">开启 %1$d 分钟</string>
     <string name="toast_handoff_armed">解放双手已开启 %1$d 分钟</string>
@@ -127,9 +127,9 @@
 
     <!-- Scripts tab -->
     <string name="scripts_headline">保存的脚本</string>
-    <string name="scripts_intro">agent 为你存下来的脚本。在这里点运行是你自己的一下点击，所以它不弹确认框。每个脚本下面留着上一次运行的结果。</string>
+    <string name="scripts_intro">agent 为你存下的脚本。你可以点一次执行，脚本就会跑一遍，所以它不弹确认框。每个脚本下面留着上一次运行的结果。</string>
     <string name="section_nothing_saved">还没有保存过</string>
-    <string name="scripts_empty_body">让 agent 存一个脚本，它就会出现在这里，并带一行说明它是做什么的。</string>
+    <string name="scripts_empty_body">让 agent 存一个脚本，它就会出现在这里，并说明它能做什么。</string>
     <plurals name="scripts_count">
         <item quantity="one">%1$d 个脚本</item>
         <item quantity="other">%1$d 个脚本</item>
@@ -143,35 +143,35 @@
     <string name="dialog_delete_script_title">删除 %1$s？</string>
     <string name="dialog_delete_script_body">它会从库里移除。这一步无法撤销。</string>
     <string name="dialog_a11y_off_title">无障碍已关闭</string>
-    <string name="dialog_a11y_off_body">运行脚本会把它的应用拉到前台，本应用因此退到后台。没有无障碍服务，系统会把本应用冻结在那里，这一次运行永远跑不完。先把它打开，再运行。</string>
+    <string name="dialog_a11y_off_body">运行脚本会把目标应用拉到前台，本应用因此退到后台。没有无障碍服务，系统会把本应用冻结在那里，这一次运行永远跑不完。先把它打开再运行。</string>
 
     <!-- Hooks tab -->
     <string name="hooks_headline">保留的钩子</string>
     <string name="hooks_intro">agent 注册、而你选择留下来的钩子。和只看一分钟的钩子不同，这些会在该应用每次启动时自动装回去——所以这一页就是"有什么在没问过你的情况下悄悄运行"的地方，也是你叫停它的地方。关掉或删除会伸进此刻正在运行的那个应用里，而不只是划掉一条记录。</string>
-    <string name="hooks_guard_installed">救砖模块：已安装。如果某个系统钩子让设备开不完机，它会自己把这些钩子悬停掉。</string>
+    <string name="hooks_guard_installed">救砖模块：已安装。如果某个系统钩子让设备开不了机，它会自己把这些钩子悬停掉。</string>
     <string name="hooks_guard_missing">救砖模块：未安装。一个让手机开不了机的系统钩子，除了进恢复模式之外没有别的东西能拦住。</string>
     <string name="section_nothing_registered">还没有注册过</string>
-    <string name="hooks_empty_body">让 agent 挂一个方法，它就会出现在这里，按它所在的应用分组。</string>
+    <string name="hooks_empty_body">让 agent 挂载一个方法，它就会出现在这里，按它所在的应用分组。</string>
     <plurals name="apps_count">
         <item quantity="one">%1$d 个应用</item>
         <item quantity="other">%1$d 个应用</item>
     </plurals>
     <string name="hook_app_header">%1$s   ·   %2$d / %3$d 开着</string>
     <string name="action_source">源码</string>
-    <string name="hook_off">已关 — 保留着，但不装进应用</string>
+    <string name="hook_off">已关 — 仍然保留，但不装进应用</string>
     <string name="hook_failed">失败 — %1$s</string>
-    <string name="hook_not_armed">开着 — 还没装进去；等该应用下次启动时装</string>
-    <string name="hook_last_armed">开着 — 上次生效 %1$s</string>
-    <string name="toast_hook_saved_later">已保存。该应用下次启动时会装上。</string>
+    <string name="hook_not_armed">已启用 — 还没装载；等该应用下次启动时自动装载</string>
+    <string name="hook_last_armed">已启用 — 上次生效 %1$s</string>
+    <string name="toast_hook_saved_later">已保存。该应用下次启动时会装载。</string>
     <string name="toast_hook_saved_nothing_to_stop">已保存。该应用没在运行，所以没有东西需要停。</string>
-    <string name="toast_hook_armed">已在 %1$d 个进程里装上</string>
-    <string name="toast_hook_not_taken">已保存，但没有进程接下它</string>
-    <string name="toast_hook_stopped">已在运行中的应用里停掉</string>
-    <string name="toast_hook_unreachable">够不到那个应用：%1$s</string>
+    <string name="toast_hook_armed">已在 %1$d 个进程里装载</string>
+    <string name="toast_hook_not_taken">已保存，但没有进程执行它</string>
+    <string name="toast_hook_stopped">已在运行中的应用里停止</string>
+    <string name="toast_hook_unreachable">应用：%1$s 不可达</string>
     <string name="dialog_delete_hook_title">删除这个钩子？</string>
-    <string name="dialog_delete_hook_body">%1$s\n\n它会从库里移除，并在正在运行的应用里卸掉。该应用重启后它不会回来。</string>
+    <string name="dialog_delete_hook_body">%1$s\n\n它会从库里移除，并在正在运行的应用里卸载掉。目标应用重启后也不会再回来。</string>
     <string name="hooks_suspended_title">系统钩子已悬停</string>
-    <string name="hooks_suspended_body">posedmcp-guard 救砖模块停止了系统钩子的装载：这台设备带着其中一个钩子不止一次没能走完开机。在你解除之前，不会有任何东西被装进 system_server；钩子本身仍然保留着，在下面列着。</string>
+    <string name="hooks_suspended_body">posedmcp-guard 救砖模块停止了系统钩子的装载：这台设备带着其中一个钩子不止一次开不了机。在你解除之前，不会有任何东西被装进 system_server；钩子本身仍然保留着，在下面列出。</string>
     <string name="action_lift_suspension">解除悬停</string>
     <string name="dialog_lift_title">解除悬停？</string>
     <string name="dialog_lift_body">system_server 下次启动时，系统钩子会重新装上。如果其中一个是这台手机开不了机的原因，它可能再次开不了机——拿不准就先删掉那条钩子。</string>
@@ -190,7 +190,7 @@
     <!-- The confirmation overlay -->
     <string name="overlay_requested_by">请求方：%1$s</string>
     <string name="overlay_command">命令</string>
-    <string name="overlay_reason">它说的理由</string>
+    <string name="overlay_reason">执行理由</string>
     <string name="overlay_deny">拒绝</string>
     <string name="overlay_countdown">%1$d 秒</string>
 
@@ -232,30 +232,30 @@
     <string name="special_settings">特殊设置…</string>
 
     <!-- 特殊设置：随 APK 内置的反制措施 -->
-    <string name="special_intro">这是奈何桥自带的、用来反制系统在后台杀它的东西。它们不是模型装的钩子：不会出现在 Hooks 页面，也删不掉——只能挂起。每一条都指向系统框架，所以这里出错就是在整个手机所依赖的那个进程里出错。</string>
-    <string name="special_none">这台机器上还没有写好的反制措施。这些都是针对特定厂商的后台清理机制写的，而这个系统不在其中。MIUI 那套正在测；ColorOS 那套已经有了。</string>
+    <string name="special_intro">这是奈何桥自带的预设钩子，用于增强自身功能。它们不是模型装的钩子：不会出现在 Hooks 页面，也删不掉——只能挂起。每一条都指向系统框架，所以这里出错就是在整个手机所依赖的那个进程里出错。</string>
+    <string name="special_none">这台机器上还没有写好的增强钩子。这些都是针对特定厂商的ROM写的，而这个系统不在其中。</string>
     <string name="special_athena_title">反制雅典娜（危险）</string>
-    <string name="special_athena_blurb">ColorOS 会在背后强停应用：动手的是雅典娜，理由写作 \'o-stop\'，触发点是"从最近任务划掉"和"息屏清理"。打开后它不能再这样对待奈何桥，对其它应用则照旧。</string>
+    <string name="special_athena_blurb">ColorOS 会偷偷杀死应用：动手的是雅典娜，日志里是 \'o-stop\'，触发点是"从最近任务划掉"和"息屏清理"。打开后，雅典娜会对奈何桥宽容，而不影响其他策略。</string>
 
     <string name="special_powerkeeper_title">澎湃优化（危险）</string>
-    <string name="special_powerkeeper_blurb">澎湃 OS 会在背后强停应用，而且入口不止一个：一键清理、息屏清理、上划清理。它们最后都落到系统里同一个地方，各带一个自己的理由——OneKeyClean、LockScreenClean、SwipeUpClean 之类。打开后这些不再作用于奈何桥；其它应用、以及其它理由，一律照旧。</string>
+    <string name="special_powerkeeper_blurb">澎湃 OS 会偷偷杀死应用，而且入口不止一个：一键清理、息屏清理、上划清理。它们最后都落到系统里同一个地方，各带一个自己的理由——OneKeyClean、LockScreenClean、SwipeUpClean 之类。打开后这些不再作用于奈何桥；其它应用以及其它理由都不受影响。</string>
     <string name="special_state_on">已释放——已装进系统框架</string>
-    <string name="special_state_off">已挂起——保留着，但不在任何进程里</string>
+    <string name="special_state_off">已挂起——脚本被挂起，它不在任何进程里</string>
     <string name="special_state_never">从未打开过</string>
     <string name="special_arm_title">确定要打开吗？</string>
     <string name="special_arm_body">要让它真正生效，有两个条件：
 
 1. LSPosed 里模块的作用域必须勾上 %1$s——那是钩子真正待着的进程。
 
-2. 勾选之后必须重启过手机，否则模块并没有真的被装进那个进程，钩子也就没有地方可挂。
+2. 勾选之后必须重启手机，否则模块并没有真的被装进那个进程，钩子也就没有地方可挂。
 
-打开之后，这里随时可以把它挂起，但删不掉；如果手机开始开不了机，救砖模块会自己把它挂起来。</string>
+打开之后，这里随时可以把它挂起；如果手机反复重启，救砖模块会自己把它挂起来。</string>
     <string name="special_arm_confirm">打开</string>
-    <string name="special_arm_cancel">先不开</string>
+    <string name="special_arm_cancel">算了</string>
     <string name="special_pause">挂起</string>
     <string name="special_resume">重新打开</string>
     <string name="special_scope_system">系统框架（system_server）</string>
     <string name="toast_special_on">已释放。模块一旦在系统框架里加载，它就生效。</string>
     <string name="toast_special_missing">这个版本里没有那条反制措施的脚本。</string>
-    <string name="toast_special_off">已挂起，不再钩任何东西。</string>
+    <string name="toast_special_off">已挂起，不再注入任何东西。</string>
 </resources>
