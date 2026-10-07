@@ -10,6 +10,8 @@ import android.os.Messenger;
 import android.os.RemoteException;
 
 import dev.posedmcp.Logx;
+import dev.posedmcp.state.HookMirror;
+import dev.posedmcp.state.HookStore;
 import dev.posedmcp.state.Prefs;
 
 /**
@@ -59,6 +61,13 @@ public class BridgeTokenService extends Service {
                 Bundle reply = new Bundle();
                 reply.putString(KEY_TOKEN, prefs.bridgeToken());
                 reply.putInt(KEY_PORT, prefs.bridgePort());
+                // The hook library rides along. Every injected process already
+                // makes this call at startup, and a process that has its hooks
+                // without waiting for the socket - and without the app having
+                // finished starting - is armed before the screen those hooks are
+                // for has been drawn.
+                reply.putString(HookMirror.KEY,
+                        HookMirror.json(HookStore.of(BridgeTokenService.this).all()));
                 if (msg.replyTo != null) {
                     try {
                         Message response = Message.obtain(null, MSG_GET_CREDENTIALS);

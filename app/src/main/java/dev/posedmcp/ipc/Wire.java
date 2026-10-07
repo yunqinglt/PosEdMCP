@@ -9,6 +9,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
@@ -37,11 +38,30 @@ public final class Wire {
     /** Guard against a malformed peer streaming an unbounded line. */
     public static final int MAX_LINE_CHARS = 64 * 1024 * 1024;
 
+    /**
+     * How long a connection to the app's own loopback port may take.
+     *
+     * <p>Short on purpose. The peer is on this device: either it answers in
+     * microseconds or it is not answering at all, and waiting longer only keeps
+     * the reconnecting client out of its loop. Measured on the OnePlus, a
+     * connect that was never answered held a module process for thirty-four
+     * seconds - the kernel's whole SYN retry budget - while every other client
+     * waited its turn.
+     */
+    public static final int LOOPBACK_CONNECT_TIMEOUT_MS = 500;
+
     private Wire() {
     }
 
     public static Socket connectLoopback(int port, int connectTimeoutMs) throws IOException {
-        Socket s = new Socket(InetAddress.getByName("127.0.0.1"), port);
+        Socket s = new Socket();
+        // The bound belongs on the connect, and this is the only place it can go:
+        // constructing a Socket with the address connects inside the constructor
+        // with no timeout at all, and one set afterwards applies to reads. That
+        // is what the parameter here used to do - it was named for the connect
+        // and never touched it.
+        s.connect(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port),
+                connectTimeoutMs);
         s.setTcpNoDelay(true);
         s.setSoTimeout(connectTimeoutMs);
         return s;

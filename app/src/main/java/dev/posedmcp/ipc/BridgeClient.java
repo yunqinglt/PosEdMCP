@@ -29,6 +29,19 @@ public final class BridgeClient {
 
     private static final int MAX_QUEUED_EVENTS = 256;
 
+    /**
+     * How long to wait between attempts to reach the app.
+     *
+     * <p>Bounded low on purpose. This loop is the only thing that notices the app
+     * has gone and brings it back - binding its credential service is what starts
+     * it - so the wait is a delay on the bridge coming back, and on every hook
+     * that has to be re-armed through it. It used to double up to a minute, which
+     * meant that after the app had been away long enough to fail a few attempts,
+     * a process starting afterwards could sit unhooked for most of that minute.
+     */
+    private static final long RECONNECT_MIN_MS = 1000L;
+    private static final long RECONNECT_MAX_MS = 5000L;
+
     /** Token handed to this process by the app, shared by every client in it. */
     private static volatile String grantedToken;
 
@@ -126,13 +139,19 @@ public final class BridgeClient {
     }
 
     private void runLoop() {
-        long backoff = 1000L;
+        long backoff = RECONNECT_MIN_MS;
+        boolean reportedDown = false;
         while (!stopped) {
             try {
                 connectAndServe();
-                backoff = 1000L;
+                backoff = RECONNECT_MIN_MS;
+                reportedDown = false;
             } catch (Throwable t) {
-                if (!stopped) {
+                // Once per outage rather than once per attempt: at a second
+                // between attempts, saying it every time buried everything else
+                // this process had to say.
+                if (!stopped && !reportedDown) {
+                    reportedDown = true;
                     Logx.w("bridge[" + endpointKey() + "] disconnected: " + t);
                 }
             } finally {
@@ -147,7 +166,7 @@ public final class BridgeClient {
                 Thread.currentThread().interrupt();
                 return;
             }
-            backoff = Math.min(backoff * 2, 60_000L);
+            backoff = Math.min(backoff * 2, RECONNECT_MAX_MS);
         }
     }
 
@@ -164,7 +183,7 @@ public final class BridgeClient {
             token = "";
         }
 
-        Socket s = Wire.connectLoopback(port, 10_000);
+        Socket s = Wire.connectLoopback(port, Wire.LOOPBACK_CONNECT_TIMEOUT_MS);
         s.setSoTimeout(0);
         BufferedReader in = Wire.reader(s);
         Writer w = Wire.writer(s);

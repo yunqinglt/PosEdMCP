@@ -8,6 +8,7 @@ import org.json.JSONObject;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,6 +21,8 @@ import dev.posedmcp.ipc.Wire;
 import dev.posedmcp.plugin.HookApi;
 import dev.posedmcp.plugin.PluginContext;
 import dev.posedmcp.plugin.PluginEntry;
+import dev.posedmcp.state.HookMirror;
+import dev.posedmcp.state.SavedHook;
 
 /**
  * Lives inside each scoped application's process.
@@ -35,6 +38,9 @@ public final class AppHost {
 
     private static final Map<String, Loaded> LOADED = new ConcurrentHashMap<>();
     private static final java.util.concurrent.atomic.AtomicBoolean INSTALLED =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+    /** Guards the one arming from the library that is worth doing. */
+    private static final java.util.concurrent.atomic.AtomicBoolean ARMED_FROM_LIBRARY =
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     private static volatile BridgeClient client;
@@ -81,6 +87,18 @@ public final class AppHost {
     private static void installBlocking(String packageName, ClassLoader appClassLoader) {
         try {
             dev.posedmcp.HiddenApi.exempt();
+            // The hooks are armed the instant the app hands the library over,
+            // which is the earliest that is possible: nothing can be read before
+            // the service answers, and the service answers as soon as this
+            // process has an Application - well before the app has finished
+            // starting and opened a socket. Registered before the client is
+            // built, so the first lookup that carries the library arms them.
+            BridgeAuth.setOnResolved(values -> {
+                String blob = values.get(HookMirror.KEY);
+                if (blob != null && ARMED_FROM_LIBRARY.compareAndSet(false, true)) {
+                    armFromLibrary(packageName, appClassLoader, blob);
+                }
+            });
             BridgeClient bridge = new BridgeClient(Wire.ROLE_APP, packageName,
                     BridgeAuth.bridgePort());
             bridge.registerHandler("load_plugin", args -> loadPlugin(packageName, appClassLoader, args));
@@ -157,6 +175,69 @@ public final class AppHost {
         if (bridge != null) {
             bridge.emit(type, data);
         }
+    }
+
+    // ---- arming without the app -------------------------------------------
+
+    /**
+     * Arms this package's kept hooks, from the library that arrives with the
+     * bridge credentials.
+     *
+     * <p>The definitions are the same ones the app would push over the bridge,
+     * and the two calls below are the same ones its bridge handlers make - a Lua
+     * hook is a script that registers itself, and a rule hook is data. What
+     * changes is only when: here, as soon as the app has answered at all,
+     * rather than after it has started, opened a listening socket, accepted a
+     * connection and been asked. Between the two sits the connection, which is
+     * the part that has been measured taking thirty-five seconds while a target
+     * ran unhooked and showed what the hook was for.
+     *
+     * <p>Failing is not fatal and not silent. The app pushes the same library
+     * into every process that connects, so a hook missed here still arrives -
+     * later, which is the whole thing this is for, but not never.
+     */
+    private static void armFromLibrary(String packageName, ClassLoader appClassLoader, String blob) {
+        List<JSONObject> hooks;
+        try {
+            hooks = HookMirror.forPackage(blob, packageName);
+        } catch (Throwable t) {
+            Logx.w("could not read the hook library for " + packageName + ": " + t);
+            return;
+        }
+        if (hooks.isEmpty()) {
+            return;
+        }
+        long started = System.currentTimeMillis();
+        int armed = 0;
+        for (JSONObject hook : hooks) {
+            try {
+                armOne(hook, packageName, appClassLoader);
+                armed++;
+            } catch (Throwable t) {
+                Logx.w("could not arm " + hook.optString("className") + "#"
+                        + hook.optString("methodName") + " from the library: " + t);
+            }
+        }
+        Logx.i("armed " + armed + "/" + hooks.size() + " hook(s) from the library in "
+                + (System.currentTimeMillis() - started) + "ms");
+    }
+
+    /** One mirrored definition, through the same calls the bridge handlers use. */
+    private static void armOne(JSONObject hook, String packageName, ClassLoader appClassLoader)
+            throws Exception {
+        if (SavedHook.BODY_LUA.equals(hook.optString("body", SavedHook.BODY_RULE))) {
+            LuaRuntime.exec(packageName, appClassLoader, currentApplication(),
+                    hook.optString("source", ""), LuaRuntime.DEFAULT_MAX_INSTRUCTIONS);
+            return;
+        }
+        JSONObject spec = new JSONObject(hook.optString("spec", "{}"));
+        HookRegistry.install(
+                spec.optString("class", ""),
+                spec.optString("method", ""),
+                spec.optString("params", ""),
+                spec.optInt("max_records", 200),
+                spec,
+                appClassLoader);
     }
 
     /**

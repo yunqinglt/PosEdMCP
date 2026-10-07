@@ -73,6 +73,33 @@ public final class BridgeAuth {
     private static final java.util.concurrent.atomic.AtomicReference<String> RESOLVED_VIA =
             new java.util.concurrent.atomic.AtomicReference<>();
 
+    /**
+     * Told with everything the app handed over, every time it hands it over.
+     *
+     * <p>The credentials and the hook library travel together, and this is the
+     * first point at which either exists: earlier than any socket, and earlier
+     * than the app has finished starting. A caller that wants the library has to
+     * take it here, because there is no way to ask for it sooner - the app
+     * cannot be read from disk (see {@link dev.posedmcp.state.HookMirror}) and
+     * its service answers nothing until its process is up.
+     *
+     * <p>Fired on every resolution rather than once, because the first lookup is
+     * usually too early. The module is loaded before the host application
+     * exists, so the first attempt finds no Context and resolves nothing; the
+     * client then connects anyway and the app approves it from its trust list,
+     * which is why "resolved via" is often missing from a process that is
+     * nonetheless connected. A listener has to be ready for a later answer.
+     */
+    public interface OnResolved {
+        void resolved(Map<String, String> values);
+    }
+
+    private static volatile OnResolved onResolved;
+
+    public static void setOnResolved(OnResolved listener) {
+        onResolved = listener;
+    }
+
     private BridgeAuth() {
     }
 
@@ -331,10 +358,20 @@ public final class BridgeAuth {
         }
     }
 
-    /** Records which channel delivered the credentials, once per process. */
+    /** Records which channel delivered the credentials, and tells the listener. */
     private static Map<String, String> resolved(Map<String, String> values, String route) {
         if (RESOLVED_VIA.compareAndSet(null, route)) {
             Logx.i("bridge credentials resolved via " + route);
+        }
+        OnResolved listener = onResolved;
+        if (listener != null) {
+            try {
+                listener.resolved(values);
+            } catch (Throwable t) {
+                // This runs inside the lookup the bridge itself depends on; a
+                // listener that throws must not cost us the credentials.
+                Logx.w("credential listener threw: " + t);
+            }
         }
         return values;
     }

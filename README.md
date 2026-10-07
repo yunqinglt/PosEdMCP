@@ -733,9 +733,9 @@ channel walled off**:
 |---|---|
 | Abstract Unix socket | SELinux refuses `connectto` (`untrusted_app` → `untrusted_app`, different security categories) — a platform design boundary, not a configuration problem |
 | ContentProvider | Package visibility: `Unknown authority`. The host app's manifest is not ours to change |
-| Explicit `bindService` | Also blocked by package visibility, `bindService` just returns false (system apps and uid 1000 are exempt, which is why systemui can connect) |
+| Explicit `bindService` | Documented as blocked by package visibility, and it does return false for some apps — but measured, it succeeds for the scoped ones on the OnePlus, and that is what the credentials actually travel over. It is also what restarts this app: the bind carries `BIND_AUTO_CREATE`, so a hooked process asking for the token brings the app back about a second after the ROM killed it |
 | Reading the file directly | Android 16 moved prefs to `/data/misc/<uuid>/prefs/`, unreachable across uids; even stripping the category with `chcon` leaves `untrusted_app` restricted from reading `app_data_file` |
-| `XSharedPreferences` | The framework's own mechanism, relying on the daemon granting access at boot — measured, it does not work here |
+| `XSharedPreferences` | The framework's own mechanism, relying on the daemon granting access at boot — measured, it does not work here. It returns an empty map on LSPosed 1.10.2: it reads the preferences file itself, from inside a process that cannot open another app's directory, and nothing elevates it |
 
 So the credentials are **handed out over the connection the app has already established**:
 when an app connects to the bridge without a token, a dialog asks the user whether to trust
@@ -751,6 +751,48 @@ stay secret anyway: the module runs inside it.
 The other channels are kept as optimisation paths: the external media directory
 `Android/media/<pkg>/`, Binder services, ContentProvider — if one works, use it and save a
 dialog.
+
+### The hook library travels with the credentials
+
+Every injected process already asks this app for its bridge token at startup, over a call
+that binds the service and therefore starts the app if it is not running. The kept hooks for
+that package ride back in the same reply, and the module arms them there and then.
+
+This is the fast path to a hook existing, and for a while it was the slow one. Arming used to
+wait for the app to come up, open its bridge socket, accept a connection, and push each hook
+back over it — and the connect was not bounded: `connectLoopback` passed its timeout to
+`setSoTimeout`, which applies to reads, while `new Socket(addr, port)` had already connected
+inside the constructor with no limit at all. A connect that a peer never answered therefore
+held a module process for the kernel's whole SYN retry budget. Measured, one launch of a
+target:
+
+```
+12:59:48.198  module loaded                                  ← hooks not armed
+12:59:48.220  hidden API exemptions installed
+              ...34 seconds...
+13:00:22.100  bridge disconnected: ETIMEDOUT
+13:00:23.219  re-armed 2/2 hook(s)                           ← 35.0 s after the process started
+```
+
+The same launch after the fix, with this app **not running at all**:
+
+```
+13:12:28.885  module loaded                                  ← this app is dead
+13:12:28.908  connect refused after 500ms
+13:12:29.864  the app's service answers the bind             ← the bind is what starts it
+13:12:30.078  armed 2/2 hook(s) from the library in 48ms
+13:12:30.081  bridge connected                               ← armed 3ms earlier
+```
+
+35.0 s to 1.19 s in the worst case, ~50–90 ms when the app is warm. The reconnect loop is
+also capped at 5 s between attempts rather than doubling to a minute, and says so once per
+outage instead of once per attempt.
+
+Hooks aimed at `system_server` are **not** carried this way. They keep the old path, because
+re-arming those without the app is exactly what `posedmcp-guard` exists to prevent: it
+suspends them from outside when a kept hook has made the device unbootable, and a module that
+put them back by itself would defeat that at the moment it matters. system_server is not
+reaped the way an app is, so it does not need the fast path either.
 
 ## Languages
 
