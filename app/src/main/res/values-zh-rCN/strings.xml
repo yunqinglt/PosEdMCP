@@ -264,6 +264,10 @@
     <string name="probe_intro">一个悬浮按钮，把当前前台应用冻住——开屏广告、一闪而过的弹窗，等你回头看时已经没了的东西，都能定在屏幕上慢慢看。只有你的点击会冻结：agent 只能读冻结状态、请求解冻，永远不能发起冻结。应用会一直冻着，直到你再按一下按钮、agent 请求解冻，或者时间到了由脱离奈何桥的 root 看门狗把它放走。</string>
     <string name="probe_window_label">显示探针悬浮按钮</string>
     <string name="probe_duration_label">冻结时长</string>
+    <string name="probe_backend_row">冻结后端：%1$s</string>
+    <string name="probe_backend_checking">检测中…</string>
+    <string name="probe_backend_cgroup">cgroup.freezer [实验性]</string>
+    <string name="probe_backend_signal">信号量</string>
     <string name="probe_duration_30s">30 秒</string>
     <string name="probe_duration_60s">1 分钟</string>
     <string name="probe_duration_300s">5 分钟</string>

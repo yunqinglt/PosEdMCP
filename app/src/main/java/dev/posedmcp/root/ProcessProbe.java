@@ -45,13 +45,20 @@ public final class ProcessProbe {
         public final int[] pids;
         /** {@code /proc/pid/stat} field 22 for each pid, captured at freeze time. */
         public final String[] starts;
+        /** uid cgroup directories frozen, when the cgroup backend ran. */
+        public final String[] paths;
+        /** Which backend froze it: "cgroup" or "signal". */
+        public final String backend;
         public final long frozenAt;
         public final long expiresAt;
 
-        State(String pkg, int[] pids, String[] starts, long frozenAt, long expiresAt) {
+        State(String pkg, int[] pids, String[] starts, String[] paths, String backend,
+                long frozenAt, long expiresAt) {
             this.pkg = pkg;
             this.pids = pids;
             this.starts = starts;
+            this.paths = paths;
+            this.backend = backend;
             this.frozenAt = frozenAt;
             this.expiresAt = expiresAt;
         }
@@ -169,7 +176,7 @@ public final class ProcessProbe {
             }
 
             long now = System.currentTimeMillis();
-            State state = new State(pkg, pids, starts, now, now + durationMs);
+            State state = new State(pkg, pids, starts, null, "signal", now, now + durationMs);
 
             // The scene is captured before the freeze: a stopped process does
             // not handle signals or answer bridges, and the whole point of the
@@ -246,6 +253,27 @@ public final class ProcessProbe {
                 }
             }
 
+            // The cgroup freezer freezes the app's whole uid cgroup in one
+            // write - every process, and any it spawns later. When it cannot
+            // be used (no v2 freezer, no derivable path, a failed write), the
+            // freeze degrades to per-pid signals, which stay fully intact.
+            String[] paths = null;
+            if (ProbeBackend.detect() == ProbeBackend.Kind.CGROUP) {
+                paths = cgroupPaths(pids);
+            }
+            if (paths != null && paths.length > 0) {
+                RootShell.Result frozen = RootShell.exec(
+                        cgroupFreezeCommand(state.expiresAt, paths), 10_000L);
+                if (frozen.ok()) {
+                    state = new State(pkg, pids, starts, paths, "cgroup",
+                            state.frozenAt, state.expiresAt);
+                    finishFreeze(ctx, pkg, state, snapshot, store);
+                    return state;
+                }
+                Logx.w("probe: cgroup freeze failed (" + firstLine(frozen.stderr)
+                        + "); falling back to signals");
+            }
+
             // A refused marker write aborts the whole freeze: without the
             // marker the watchdog cannot vouch for its own deadline, and a
             // freeze whose only escape is a person who might not be there is
@@ -260,23 +288,31 @@ public final class ProcessProbe {
                 throw new IOException(ctx.getString(R.string.toast_probe_freeze_failed,
                         firstLine(stopped.stderr)));
             }
-
-            armWatchdog(state);
-            save(ctx, state);
-            current = state;
-            if (snapshot != null) {
-                try {
-                    if (store != null) {
-                        store.add(pkg, snapshot);
-                    }
-                } catch (Throwable t) {
-                    Logx.w("probe: could not file the snapshot: " + t);
-                }
-            }
-            Logx.i("probe: frozen " + pkg + " (" + pids.length + " pid(s)) for "
-                    + (durationMs / 1000L) + "s, watchdog armed");
+            state = new State(pkg, pids, starts, null, "signal",
+                    state.frozenAt, state.expiresAt);
+            finishFreeze(ctx, pkg, state, snapshot, store);
             return state;
         }
+    }
+
+    /** The shared tail of both freeze paths: watchdog, record, snapshot file. */
+    private static void finishFreeze(Context ctx, String pkg, State state, JSONObject snapshot,
+            ProbeStore store) throws IOException {
+        armWatchdog(state);
+        save(ctx, state);
+        current = state;
+        if (snapshot != null) {
+            try {
+                if (store != null) {
+                    store.add(pkg, snapshot);
+                }
+            } catch (Throwable t) {
+                Logx.w("probe: could not file the snapshot: " + t);
+            }
+        }
+        Logx.i("probe: frozen " + pkg + " (" + state.pids.length + " pid(s)) for "
+                + ((state.expiresAt - state.frozenAt) / 1000L) + "s via " + state.backend
+                + ", watchdog armed");
     }
 
     /**
@@ -332,13 +368,21 @@ public final class ProcessProbe {
         }
     }
 
-    /** CONTs each pid only while it is still stopped, then takes the marker down. */
+    /** Releases whatever the state's backend froze, then takes the marker down. */
     private static String resumeScript(State state) {
         StringBuilder script = new StringBuilder();
-        for (int i = 0; i < state.pids.length; i++) {
-            script.append("[ \"$(cut -d' ' -f3 /proc/").append(state.pids[i])
-                    .append("/stat 2>/dev/null)\" = \"T\" ] && kill -CONT ")
-                    .append(state.pids[i]).append("; ");
+        if (ProbeBackend.Kind.CGROUP.name().equalsIgnoreCase(state.backend)) {
+            // One idempotent write per uid cgroup; no pid checks - a uid path
+            // is not recycled the way a pid is.
+            for (String path : state.paths) {
+                script.append("echo 0 > ").append(path).append("/cgroup.freeze 2>/dev/null; ");
+            }
+        } else {
+            for (int i = 0; i < state.pids.length; i++) {
+                script.append("[ \"$(cut -d' ' -f3 /proc/").append(state.pids[i])
+                        .append("/stat 2>/dev/null)\" = \"T\" ] && kill -CONT ")
+                        .append(state.pids[i]).append("; ");
+            }
         }
         script.append("rm -f ").append(MARKER).append("; exit 0");
         return script.toString();
@@ -354,15 +398,77 @@ public final class ProcessProbe {
         StringBuilder script = new StringBuilder("sleep ").append(secs)
                 .append("; [ \"$(cat ").append(MARKER).append(" 2>/dev/null)\" = \"")
                 .append(state.expiresAt).append("\" ] || exit 0");
-        for (int i = 0; i < state.pids.length; i++) {
-            script.append("; [ \"$(cut -d' ' -f22 /proc/").append(state.pids[i])
-                    .append("/stat 2>/dev/null)\" = \"").append(state.starts[i])
-                    .append("\" ] && kill -CONT ").append(state.pids[i]);
+        if (ProbeBackend.Kind.CGROUP.name().equalsIgnoreCase(state.backend)) {
+            for (String path : state.paths) {
+                script.append("; echo 0 > ").append(path).append("/cgroup.freeze 2>/dev/null");
+            }
+        } else {
+            for (int i = 0; i < state.pids.length; i++) {
+                script.append("; [ \"$(cut -d' ' -f22 /proc/").append(state.pids[i])
+                        .append("/stat 2>/dev/null)\" = \"").append(state.starts[i])
+                        .append("\" ] && kill -CONT ").append(state.pids[i]);
+            }
         }
         ProcessBuilder pb = new ProcessBuilder(RootShell.suPath(), "-c", script.toString());
         pb.redirectErrorStream(true);
         pb.redirectOutput(new java.io.File("/dev/null"));
         pb.start();
+    }
+
+    /**
+     * The uid cgroup directories to freeze, derived from each pid's own v2
+     * cgroup path - which also covers isolated processes, since those live in
+     * uid cgroups of their own. Empty when the freezer cannot be used.
+     */
+    private static String[] cgroupPaths(int[] pids) {
+        StringBuilder pidsArg = new StringBuilder();
+        for (int pid : pids) {
+            pidsArg.append(pid).append(' ');
+        }
+        String cmd = "for p in " + pidsArg + "; do"
+                + " awk -F: '$1==\"0\"{print $3}' /proc/$p/cgroup 2>/dev/null | head -1;"
+                + " done | sort -u | while read c; do d=$(dirname \"$c\");"
+                + " [ \"$d\" = \"/\" ] && continue;"
+                + " [ -f \"/sys/fs/cgroup$d/cgroup.freeze\" ] && echo \"/sys/fs/cgroup$d\";"
+                + " done";
+        try {
+            RootShell.Result r = RootShell.exec(cmd, 8_000L);
+            if (!r.ok() && r.stdout.trim().isEmpty()) {
+                return null;
+            }
+            List<String> out = new ArrayList<>();
+            for (String line : r.stdout.split("\n")) {
+                String path = line.trim();
+                if (!path.isEmpty() && path.startsWith("/sys/fs/cgroup")) {
+                    out.add(path);
+                }
+            }
+            return out.isEmpty() ? null : out.toArray(new String[0]);
+        } catch (Throwable t) {
+            Logx.w("probe: cgroup path derivation failed: " + t);
+            return null;
+        }
+    }
+
+    /**
+     * Freezes the uid cgroups, verifying each write with a read-back, and
+     * rolls every one of them back on any failure - a half-frozen app is the
+     * one state a freeze must never leave behind.
+     */
+    private static String cgroupFreezeCommand(long expiresAt, String[] paths) {
+        StringBuilder cmd = new StringBuilder("echo ").append(expiresAt)
+                .append(" > ").append(MARKER).append(" || exit 1; ok=1;");
+        for (String path : paths) {
+            cmd.append(" echo 1 > ").append(path).append("/cgroup.freeze 2>/dev/null || ok=0;")
+                    .append(" [ \"$(cat ").append(path)
+                    .append("/cgroup.freeze 2>/dev/null)\" = \"1\" ] || ok=0;");
+        }
+        cmd.append(" if [ \"$ok\" = 0 ]; then");
+        for (String path : paths) {
+            cmd.append(" echo 0 > ").append(path).append("/cgroup.freeze 2>/dev/null;");
+        }
+        cmd.append(" rm -f ").append(MARKER).append("; exit 2; fi; exit 0");
+        return cmd.toString();
     }
 
     private static List<long[]> listProcesses(String pkg) throws IOException {
@@ -414,7 +520,16 @@ public final class ProcessProbe {
                 pids[i] = pidsA.getInt(i);
                 starts[i] = startsA.getString(i);
             }
-            return new State(o.getString("pkg"), pids, starts,
+            JSONArray pathsA = o.optJSONArray("paths");
+            String[] paths = null;
+            if (pathsA != null) {
+                paths = new String[pathsA.length()];
+                for (int i = 0; i < pathsA.length(); i++) {
+                    paths[i] = pathsA.getString(i);
+                }
+            }
+            String backend = o.optString("backend", "signal");
+            return new State(o.getString("pkg"), pids, starts, paths, backend,
                     o.getLong("frozenAt"), o.getLong("expiresAt"));
         } catch (Throwable t) {
             Logx.w("probe: unreadable persisted state, clearing: " + t);
@@ -435,6 +550,14 @@ public final class ProcessProbe {
             o.put("pkg", state.pkg);
             o.put("pids", pidsA);
             o.put("starts", startsA);
+            if (state.paths != null) {
+                JSONArray pathsA = new JSONArray();
+                for (String path : state.paths) {
+                    pathsA.put(path);
+                }
+                o.put("paths", pathsA);
+            }
+            o.put("backend", state.backend);
             o.put("frozenAt", state.frozenAt);
             o.put("expiresAt", state.expiresAt);
             Prefs.of(ctx).setProbeStateJson(o.toString());

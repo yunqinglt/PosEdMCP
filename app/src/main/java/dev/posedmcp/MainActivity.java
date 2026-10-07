@@ -452,6 +452,24 @@ public class MainActivity extends AppCompatActivity {
         row.addView(toggle);
         inner.addView(row);
 
+        // Which backend a freeze will run on, probed on this device. The
+        // cgroup freezer is preferred where it exists; the label says
+        // experimental because the ROMs run their own background freeze on
+        // the same files.
+        TextView backend = caption(getString(R.string.probe_backend_row,
+                getString(R.string.probe_backend_checking)));
+        inner.addView(backend);
+        Thread backendProbe = new Thread(() -> {
+            dev.posedmcp.root.ProbeBackend.Kind kind =
+                    dev.posedmcp.root.ProbeBackend.detect();
+            runOnUiThread(() -> backend.setText(getString(R.string.probe_backend_row,
+                    getString(kind == dev.posedmcp.root.ProbeBackend.Kind.CGROUP
+                            ? R.string.probe_backend_cgroup
+                            : R.string.probe_backend_signal))));
+        }, "posedmcp-backend-detect");
+        backendProbe.setDaemon(true);
+        backendProbe.start();
+
         inner.addView(caption(getString(R.string.probe_duration_label)));
 
         MaterialButtonToggleGroup group = new MaterialButtonToggleGroup(this);

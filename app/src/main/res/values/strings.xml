@@ -259,6 +259,10 @@ Once it is on, it can be paused here at any time but not deleted - and the rescu
     <string name="probe_intro">A floating button that freezes the app in front, so a screen that would be gone by the time you look - a splash ad, a transient dialog - stays put while it is inspected. Only your tap freezes: the agent can read the frozen state and ask for the release, but it can never start one. The app stays frozen until you press the button again, the agent asks, or the time runs out and a detached root watchdog lets it go.</string>
     <string name="probe_window_label">Show the probe button</string>
     <string name="probe_duration_label">Freeze duration</string>
+    <string name="probe_backend_row">Freeze backend: %1$s</string>
+    <string name="probe_backend_checking">checking…</string>
+    <string name="probe_backend_cgroup">cgroup.freezer [experimental]</string>
+    <string name="probe_backend_signal">signals</string>
     <string name="probe_duration_30s">30 s</string>
     <string name="probe_duration_60s">1 min</string>
     <string name="probe_duration_300s">5 min</string>
