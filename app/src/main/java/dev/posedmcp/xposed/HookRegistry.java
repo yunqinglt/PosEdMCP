@@ -239,13 +239,22 @@ public final class HookRegistry {
             @Override
             public void before(HookApi.HookParam param) {
                 try {
+                    // Opened before anything runs, and this order is the whole
+                    // point of where it sits. A body decides per call whether it
+                    // changes anything and says so through markAltered(), which
+                    // marks the record in flight - a body that ran before the
+                    // record existed could only ever fail to find one, so every
+                    // Lua hook that rewrote an argument was reported as an
+                    // untouched observation. It also fixes what the arguments
+                    // are: sampled here they are the ones the application
+                    // actually passed, not the ones the hook turned them into.
+                    if (entry.rule.observe) {
+                        openRecordQuietly(entry, param);
+                    }
                     if (entry.body != null) {
                         runBody(entry, param, false);
                     } else {
                         rewriteBefore(entry, param);
-                    }
-                    if (entry.rule.observe) {
-                        IN_FLIGHT.set(openRecord(entry, param));
                     }
                 } catch (Throwable ignored) {
                 }
@@ -389,6 +398,22 @@ public final class HookRegistry {
         }
         record.altered = entry.body == null && entry.rule.changesAnything();
         return record;
+    }
+
+    /**
+     * Opens the record for this call, and gives up if it cannot.
+     *
+     * <p>Separate from the work the hook was asked to do, because the two fail
+     * in opposite directions: a call that is not recorded is a gap in a log, and
+     * a call that is not rewritten is a hook that silently does nothing. Opening
+     * the record happens first, so it is this one that has to yield.
+     */
+    private static void openRecordQuietly(Entry entry, HookApi.HookParam param) {
+        try {
+            IN_FLIGHT.set(openRecord(entry, param));
+        } catch (Throwable t) {
+            IN_FLIGHT.remove();
+        }
     }
 
     private static void closeRecord(Entry entry, HookApi.HookParam param) {
