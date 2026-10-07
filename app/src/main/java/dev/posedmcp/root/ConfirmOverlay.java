@@ -154,17 +154,18 @@ final class ConfirmOverlay {
         content.addView(header);
 
         if (!TextUtils.isEmpty(req.requester)) {
-            content.addView(caption(themed, "Requested by: " + req.requester),
+            content.addView(caption(themed,
+                            themed.getString(R.string.overlay_requested_by, req.requester)),
                     topMargin(themed, 4));
         }
 
-        content.addView(sectionLabel(themed, "COMMAND",
+        content.addView(sectionLabel(themed, themed.getString(R.string.overlay_command),
                         role(card, androidx.appcompat.R.attr.colorError)),
                 topMargin(themed, 16));
         content.addView(scrollingBlock(themed, card, req.detail, true), weighted(themed, 6));
 
         if (!TextUtils.isEmpty(req.reason)) {
-            content.addView(sectionLabel(themed, "STATED REASON",
+            content.addView(sectionLabel(themed, themed.getString(R.string.overlay_reason),
                             role(card, androidx.appcompat.R.attr.colorPrimary)),
                     topMargin(themed, 16));
             content.addView(scrollingBlock(themed, card, req.reason, false), weighted(themed, 6));
@@ -177,7 +178,7 @@ final class ConfirmOverlay {
 
         MaterialButton deny = new MaterialButton(themed, null,
                 com.google.android.material.R.attr.materialButtonOutlinedStyle);
-        deny.setText("Deny");
+        deny.setText(themed.getString(R.string.overlay_deny));
         deny.setAllCaps(false);
         actions.addView(deny);
 
@@ -229,7 +230,7 @@ final class ConfirmOverlay {
                     onDecision.onDecision(false, "no answer within " + (req.timeoutMs / 1000) + "s");
                     return;
                 }
-                countdown.setText((left + 999) / 1000 + "s");
+                countdown.setText(themed.getString(R.string.overlay_countdown, (left + 999) / 1000));
                 main.postDelayed(this, 500L);
             }
         };

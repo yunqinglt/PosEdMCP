@@ -28,6 +28,20 @@ android {
         }
     }
 
+    androidResources {
+        // Generates res/xml/locales_config.xml from the resource folders that
+        // exist and points the manifest at it, which is what puts this app in
+        // Settings - Apps - 奈何桥 - Language on Android 13 and later. The locale
+        // it names as the app's own comes from res/resources.properties.
+        //
+        // Whether a Chinese ROM still shows that entry is a separate question -
+        // the picker is the platform's, and the per-app override is only honoured
+        // where the system implements it. The translations themselves do not
+        // depend on it: with values-zh-rCN present the app already follows the
+        // system language on every release.
+        generateLocaleConfig = true
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

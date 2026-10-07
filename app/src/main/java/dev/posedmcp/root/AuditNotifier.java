@@ -10,6 +10,7 @@ import android.os.SystemClock;
 
 import dev.posedmcp.Logx;
 import dev.posedmcp.MainActivity;
+import dev.posedmcp.R;
 
 /**
  * The audit trail, where the user will actually see it.
@@ -52,9 +53,8 @@ public final class AuditNotifier {
     /** Hand-off mode was just armed by the user, in the app. */
     public static synchronized void handoffArmed(Context ctx, long durationMs) {
         long minutes = Math.max(1L, durationMs / 60_000L);
-        post(ctx, HANDOFF_ID, "Hand-off mode is ON",
-                "For the next " + minutes + " minutes nothing will ask you first - root shell"
-                        + " commands included. This banner is the only report you will get.",
+        post(ctx, HANDOFF_ID, ctx.getString(R.string.audit_handoff_on_title),
+                ctx.getString(R.string.audit_handoff_on_body, minutes),
                 true);
         // A fresh window starts a fresh burst count.
         lastAlertAt = 0L;
@@ -63,9 +63,10 @@ public final class AuditNotifier {
 
     /** Hand-off mode ended, however it ended. */
     public static synchronized void handoffEnded(Context ctx, String why) {
-        post(ctx, HANDOFF_ID, "Hand-off mode is off",
-                "Prompts are back: every privileged action needs your approval again."
-                        + (why == null || why.isEmpty() ? "" : " (" + why + ")"),
+        String suffix = why == null || why.isEmpty()
+                ? "" : ctx.getString(R.string.audit_handoff_off_why, why);
+        post(ctx, HANDOFF_ID, ctx.getString(R.string.audit_handoff_off_title),
+                ctx.getString(R.string.audit_handoff_off_body, suffix),
                 true);
         suppressed = 0;
     }
@@ -88,7 +89,7 @@ public final class AuditNotifier {
 
         String text = flat.isEmpty() ? String.valueOf(tool) : flat;
         if (suppressed > 0) {
-            text = text + "\n(and " + suppressed + " more since the last banner)";
+            text = text + "\n" + ctx.getString(R.string.audit_more_folded, suppressed);
         }
         if (alert) {
             lastAlertAt = now;
@@ -96,7 +97,7 @@ public final class AuditNotifier {
         } else {
             suppressed++;
         }
-        post(ctx, ACTION_ID, "Hand-off · " + tool, text, alert);
+        post(ctx, ACTION_ID, ctx.getString(R.string.audit_action, tool), text, alert);
     }
 
     private static void post(Context ctx, int id, String title, String text, boolean alert) {
@@ -105,7 +106,7 @@ public final class AuditNotifier {
             if (nm == null) {
                 return;
             }
-            ensureChannel(nm);
+            ensureChannel(nm, ctx);
 
             PendingIntent open = PendingIntent.getActivity(ctx, id,
                     new Intent(ctx, MainActivity.class)
@@ -133,10 +134,10 @@ public final class AuditNotifier {
         }
     }
 
-    private static void ensureChannel(NotificationManager nm) {
+    private static void ensureChannel(NotificationManager nm, Context ctx) {
         NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
-                "Hand-off activity", NotificationManager.IMPORTANCE_HIGH);
-        channel.setDescription("What the agent did while hand-off mode had the gate open");
+                ctx.getString(R.string.audit_channel_handoff), NotificationManager.IMPORTANCE_HIGH);
+        channel.setDescription(ctx.getString(R.string.audit_channel_handoff_desc));
         channel.setBypassDnd(true);
         nm.createNotificationChannel(channel);
     }

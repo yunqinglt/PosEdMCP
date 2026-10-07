@@ -595,6 +595,24 @@ LSPosed 1.10.2 是一个 **API 100** 框架，它**同样会读** `META-INF/xpos
 保留的其它通道作为优化路径：外部媒体目录 `Android/media/<pkg>/`、Binder 服务、
 ContentProvider——能通就用，省掉一次弹窗。
 
+## 多语言
+
+界面同时带英文（`res/values/`）和简体中文（`res/values-zh-rCN/`），所以它在**所有 Android 版本**
+上都跟随手机的系统语言，不需要额外打开什么。
+
+Android 13 及以后，应用还会出现在**设置 → 应用 → 奈何桥 → 语言**里。那个入口是生成出来的，不是手写的：
+`androidResources { generateLocaleConfig = true }` 依据**实际存在**的资源目录生成
+`res/xml/_generated_res_locale_config.xml`，而"默认资源是哪门语言"取自 `res/resources.properties`。
+国产 ROM 会不会仍然显示这个选择器是平台的事，**翻译本身不依赖它**——在一加上实测：
+`cmd locale set-app-locales dev.posedmcp --user 0 --locales en-US`（选择器背后调的就是这条 API）
+能把整个界面切成英文；不设覆盖时应用跟随系统。
+
+**"奈何桥"不参与翻译。** `app_name` 有意不提供中文版本：它是专有名词，应用在任何语言下都叫这个名字，
+而"回落到 `res/values/`"这件事保证了这一点，不需要以后有人记得。把这个词用在句子里的那些字符串
+（`notif_title`、`toast_turn_on_in_list`、桥信任弹窗）里它也保持原样。
+
+给 agent 读的一切——工具名、描述、返回值——保持英文。两个读者是分开的：界面是用户的，工具面是模型的。
+
 ## 开发
 
 ```bash

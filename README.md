@@ -738,6 +738,28 @@ The other channels are kept as optimisation paths: the external media directory
 `Android/media/<pkg>/`, Binder services, ContentProvider — if one works, use it and save a
 dialog.
 
+## Languages
+
+The interface ships in English (`res/values/`) and Simplified Chinese
+(`res/values-zh-rCN/`), so it follows the phone's system language on every Android release with
+nothing else switched on.
+
+On Android 13 and later the app also appears in **Settings → Apps → 奈何桥 → Language**. That entry is
+generated rather than hand-written: `androidResources { generateLocaleConfig = true }` builds
+`res/xml/_generated_res_locale_config.xml` from the resource folders that exist, and takes the language
+the unqualified resources are written in from `res/resources.properties`. Whether a Chinese ROM still
+shows the picker is the platform's business, and the translations do not depend on it — measured on the
+OnePlus: `cmd locale set-app-locales dev.posedmcp --user 0 --locales en-US` (the same API the picker
+calls) switches the whole interface to English, and with no override set the app follows the system.
+
+**"奈何桥" is not translated.** `app_name` deliberately has no Chinese counterpart: the name is a proper
+noun and the app is called that in every language, which falling through to `res/values/` guarantees
+without anyone having to remember it later. Strings that use the word inside a sentence
+(`notif_title`, `toast_turn_on_in_list`, the bridge-trust dialog) keep it too.
+
+Everything the agent reads — tool names, descriptions, results — stays in English. The two audiences are
+separate: the interface is the user's, and the tool surface is the model's.
+
 ## Development
 
 ```bash

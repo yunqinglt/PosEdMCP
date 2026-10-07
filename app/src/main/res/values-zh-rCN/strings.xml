@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Simplified Chinese.
+
+  app_name is deliberately absent: the app is called 奈何桥 in every language, and
+  letting it fall through to res/values/ is how that stays true without anyone
+  having to remember it later.
+-->
+<resources>
+    <string name="about">关于</string>
+    <string name="xposed_description">跑在手机本机的 MCP 服务器，让 agent 能真正操作设备：经确认的 shell 执行、截屏、注入输入，以及往作用域应用里注入代码。</string>
+    <!-- Shown in the system accessibility settings, so it says plainly what this is. -->
+    <string name="accessibility_description">让奈何桥代替你操作这台设备：截屏、发送点击和滑动、读取当前界面的控件。它同时也负责保活，这样即使别的应用在前台，agent 也够得到服务器。每一个动作仍然会先问你。</string>
+
+    <!-- Tabs -->
+    <string name="tab_status">状态</string>
+    <string name="tab_scripts">脚本</string>
+    <string name="tab_hooks">钩子</string>
+
+    <!-- Words and buttons that recur everywhere -->
+    <string name="action_close">关闭</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_delete">删除</string>
+    <string name="action_run">运行</string>
+    <string name="action_open">查看</string>
+    <string name="action_understand">我明白</string>
+    <string name="toast_copied">已复制</string>
+    <string name="toast_start_service_first">请先启动服务</string>
+    <string name="toast_no_app_for_url">这台设备上没有能打开 %1$s 的应用</string>
+
+    <!-- About -->
+    <string name="about_framework">当前框架</string>
+    <string name="about_not_running">服务未运行</string>
+    <string name="about_not_reported">尚未报告</string>
+    <string name="about_reported_by">由 %1$s 报告</string>
+    <string name="about_start_an_app">启动任意一个在本模块作用域内的应用，它就会说出来</string>
+
+    <!-- Status tab -->
+    <string name="section_status">状态</string>
+    <string name="label_service">服务</string>
+    <string name="value_running">运行中</string>
+    <string name="value_stopped">已停止</string>
+    <string name="label_mcp_endpoint">MCP 端点</string>
+    <string name="label_bridge_port">桥端口</string>
+    <string name="label_system_bridge">系统桥</string>
+    <string name="value_connected">已连接</string>
+    <string name="value_offline">离线</string>
+    <string name="label_module_processes">模块进程</string>
+    <string name="value_processes_connected">%1$d 个已连接</string>
+    <string name="label_overlay_permission">悬浮窗权限</string>
+    <string name="value_granted">已授予</string>
+    <string name="value_not_granted">未授予</string>
+    <string name="label_battery">电池</string>
+    <string name="value_battery_unrestricted">不受限制</string>
+    <string name="value_battery_optimised">被优化 - 服务会被冻结</string>
+    <string name="label_accessibility">无障碍</string>
+    <string name="value_a11y_enabled">已启用</string>
+    <string name="value_a11y_connecting">已打开，但还没连上</string>
+    <string name="value_a11y_stuck">开着但没有运行</string>
+    <string name="value_a11y_off">未启用</string>
+    <string name="body_a11y_stuck">它其实还开着，只是系统不再运行它，而且它不会自己连回来。这通常意味着本应用的进程被杀掉时（这台 ROM 会按自己的节奏做这件事），无障碍框架把这个服务标成了"出现故障"，之后就不再绑定它。设置里那个开关显示的仍然是开，所以在那里再"打开"一次没有任何作用：必须关掉再打开。上面的修复按钮做的就是这件事。</string>
+    <string name="body_a11y_connecting">它已经打开，只是还没接上。这一页是快照而不是实时视图，所以应用刚重启时它会这样显示一会儿。如果一分钟后还是这样，那就是故障状态，用修复。</string>
+    <string name="body_a11y_off">无障碍是让这个应用活下去的东西：一个启用了无障碍服务的应用持有系统绑定，所以离开屏幕后不会被冻结。没有它，MCP 端点会在别的应用里的 agent 正要用它的时候恰好哑掉。截屏、手势和控件树也同样是它提供的，而且不需要 root。</string>
+    <string name="body_a11y_on">这也正是让本应用保活的东西：一个启用了无障碍服务的应用持有系统绑定，所以离开屏幕后不会被冻结。</string>
+    <string name="action_repair_accessibility">修复无障碍…</string>
+    <string name="body_battery_optimisation">电池优化同样会在后台冻结进程。请把电池使用设为不受限制，ColorOS 上还要在电池设置里允许奈何桥后台活动。</string>
+    <string name="body_overlay_permission">没有悬浮窗权限时，确认弹窗会退化成一条通知。如果连通知也发不出去，特权调用会被直接拒绝。</string>
+
+    <string name="section_endpoint">端点</string>
+    <string name="label_bearer_token">凭据（Bearer token）</string>
+    <string name="action_copy_url">复制地址</string>
+    <string name="action_copy_token">复制凭据</string>
+    <string name="action_rotate">更换</string>
+    <string name="clip_url">奈何桥 URL</string>
+    <string name="clip_token">奈何桥 token</string>
+    <string name="toast_tokens_rotated">凭据已更换</string>
+    <string name="body_endpoint_localhost">监听只绑定在 127.0.0.1。要从电脑经 USB 访问：adb forward tcp:%1$d tcp:%1$d</string>
+
+    <string name="section_actions">操作</string>
+    <string name="action_stop_service">停止服务</string>
+    <string name="action_start_service">启动服务</string>
+    <string name="action_overlay">悬浮窗</string>
+    <string name="action_battery">电池</string>
+    <string name="action_accessibility">无障碍</string>
+    <string name="action_accessibility_settings">无障碍设置</string>
+    <string name="toast_overlay_settings_failed">打不开悬浮窗设置</string>
+    <string name="toast_turn_on_in_list">在列表里打开奈何桥</string>
+    <string name="toast_a11y_settings_failed">打不开无障碍设置</string>
+    <string name="toast_a11y_read_failed">读不到无障碍设置</string>
+    <string name="toast_battery_settings_failed">打不开电池设置</string>
+
+    <string name="section_confirmation_policy">确认策略</string>
+    <string name="body_confirmation_policy">root shell 命令永远弹窗且不可关闭。其余的可以放宽，因为它们走的是模块的平台权限，而不是 shell。</string>
+    <string name="toggle_confirm_screen">截屏和导出控件树需要确认</string>
+    <string name="toggle_confirm_input">注入输入需要确认</string>
+    <string name="toggle_confirm_plugin">加载和调用插件需要确认</string>
+    <string name="toggle_autostart">开机后自动启动</string>
+
+    <string name="section_tools">工具</string>
+    <string name="body_tools">只读工具从不弹窗。其余的都会先问用户再执行。</string>
+    <string name="tools_service_not_running">（服务未运行）</string>
+    <string name="tools_read_only">只读</string>
+    <string name="tools_always_prompts">总是弹窗</string>
+    <string name="tools_prompts">弹窗</string>
+
+    <!-- Hand-off mode -->
+    <string name="section_handoff">解放双手模式</string>
+    <string name="handoff_line">开启中 — 还剩 %1$d:%2$s</string>
+    <string name="body_handoff_on">agent 调用的每个工具都会在被要求的瞬间执行，中间没有任何东西先看一眼——包括 root shell 命令。时间一到它会自己关掉，重启手机也会提前结束它。本应用被杀掉再拉起来不会——这台 ROM 会自己干这事，而因为一次内存回收就把窗口丢掉，对谁都没好处。</string>
+    <string name="action_extend_minutes">延长 %1$d 分钟</string>
+    <string name="action_turn_off_now">立刻关掉</string>
+    <string name="body_handoff_intro">确认弹窗是挡在 agent 和这台设备之间的唯一一道。解放双手模式把它拿走：在一段时间里，每个动作都在被要求的瞬间执行。</string>
+    <string name="body_handoff_warning">它适用于你刻意让 agent 独自跑一长串动作的场合。它同时也是能让手机开不了机的模式，所以它会自己到期，而且没有办法让它常驻——只能重新开启。</string>
+    <string name="action_arm_handoff">开启解放双手模式…</string>
+    <string name="handoff_warn1_title">解放双手模式：不再弹窗</string>
+    <string name="handoff_warn1_body">开启期间，agent 调用的一切都会立即执行。root shell 命令、注入的点击和文本、加载进别的应用里的代码、当前屏幕上任何内容的截图——没有一样会先问你。</string>
+    <string name="handoff_warn2_title">这里面包括 root</string>
+    <string name="handoff_warn2_body">root shell 是唯一一个从一开始就不可关闭的东西，那是有意的——这个项目存在的理由就是它。解放双手模式把它也一起盖住了。</string>
+    <string name="handoff_warn3_title">这可能把手机弄坏</string>
+    <string name="handoff_warn3_body">一条删除文件、关掉系统组件或写入分区的命令，会完全按 agent 写的那样执行，中间没有任何东西。那可能让这台设备再也开不了机，而且没有撤销——审计日志记下了跑过什么，但它没法把东西放回去。</string>
+    <string name="handoff_type_body">在下面输入 %1$s 才能点亮按钮。口袋里的误触、点错一下、随手划到都不可能做到这件事——只有正在读这句话的你，可以。</string>
+    <string name="handoff_type_title">输入 %1$s 以开启</string>
+    <string name="action_arm_minutes">开启 %1$d 分钟</string>
+    <string name="toast_handoff_armed">解放双手已开启 %1$d 分钟</string>
+    <string name="toast_handoff_extended">已延长 - 还剩 %1$d 分钟</string>
+    <string name="toast_handoff_off">解放双手已关闭 - 弹窗回来了</string>
+
+    <!-- Scripts tab -->
+    <string name="scripts_headline">保存的脚本</string>
+    <string name="scripts_intro">agent 为你存下来的脚本。在这里点运行是你自己的一下点击，所以它不弹确认框。每个脚本下面留着上一次运行的结果。</string>
+    <string name="section_nothing_saved">还没有保存过</string>
+    <string name="scripts_empty_body">让 agent 存一个脚本，它就会出现在这里，并带一行说明它是做什么的。</string>
+    <plurals name="scripts_count">
+        <item quantity="one">%1$d 个脚本</item>
+        <item quantity="other">%1$d 个脚本</item>
+    </plurals>
+    <string name="script_in">在 %1$s</string>
+    <string name="script_never_run">从未运行</string>
+    <string name="script_outcome_ok">成功  %1$s%2$s</string>
+    <string name="script_outcome_failed">失败  %1$s%2$s</string>
+    <string name="script_no_output">（结束了，没有输出）</string>
+    <string name="toast_running_script">正在运行 %1$s</string>
+    <string name="dialog_delete_script_title">删除 %1$s？</string>
+    <string name="dialog_delete_script_body">它会从库里移除。这一步无法撤销。</string>
+    <string name="dialog_a11y_off_title">无障碍已关闭</string>
+    <string name="dialog_a11y_off_body">运行脚本会把它的应用拉到前台，本应用因此退到后台。没有无障碍服务，系统会把本应用冻结在那里，这一次运行永远跑不完。先把它打开，再运行。</string>
+
+    <!-- Hooks tab -->
+    <string name="hooks_headline">保留的钩子</string>
+    <string name="hooks_intro">agent 注册、而你选择留下来的钩子。和只看一分钟的钩子不同，这些会在该应用每次启动时自动装回去——所以这一页就是"有什么在没问过你的情况下悄悄运行"的地方，也是你叫停它的地方。关掉或删除会伸进此刻正在运行的那个应用里，而不只是划掉一条记录。</string>
+    <string name="hooks_guard_installed">救砖模块：已安装。如果某个系统钩子让设备开不完机，它会自己把这些钩子悬停掉。</string>
+    <string name="hooks_guard_missing">救砖模块：未安装。一个让手机开不了机的系统钩子，除了进恢复模式之外没有别的东西能拦住。</string>
+    <string name="section_nothing_registered">还没有注册过</string>
+    <string name="hooks_empty_body">让 agent 挂一个方法，它就会出现在这里，按它所在的应用分组。</string>
+    <plurals name="apps_count">
+        <item quantity="one">%1$d 个应用</item>
+        <item quantity="other">%1$d 个应用</item>
+    </plurals>
+    <string name="hook_app_header">%1$s   ·   %2$d / %3$d 开着</string>
+    <string name="action_source">源码</string>
+    <string name="hook_off">已关 — 保留着，但不装进应用</string>
+    <string name="hook_failed">失败 — %1$s</string>
+    <string name="hook_not_armed">开着 — 还没装进去；等该应用下次启动时装</string>
+    <string name="hook_last_armed">开着 — 上次生效 %1$s</string>
+    <string name="toast_hook_saved_later">已保存。该应用下次启动时会装上。</string>
+    <string name="toast_hook_saved_nothing_to_stop">已保存。该应用没在运行，所以没有东西需要停。</string>
+    <string name="toast_hook_armed">已在 %1$d 个进程里装上</string>
+    <string name="toast_hook_not_taken">已保存，但没有进程接下它</string>
+    <string name="toast_hook_stopped">已在运行中的应用里停掉</string>
+    <string name="toast_hook_unreachable">够不到那个应用：%1$s</string>
+    <string name="dialog_delete_hook_title">删除这个钩子？</string>
+    <string name="dialog_delete_hook_body">%1$s\n\n它会从库里移除，并在正在运行的应用里卸掉。该应用重启后它不会回来。</string>
+    <string name="hooks_suspended_title">系统钩子已悬停</string>
+    <string name="hooks_suspended_body">posedmcp-guard 救砖模块停止了系统钩子的装载：这台设备带着其中一个钩子不止一次没能走完开机。在你解除之前，不会有任何东西被装进 system_server；钩子本身仍然保留着，在下面列着。</string>
+    <string name="action_lift_suspension">解除悬停</string>
+    <string name="dialog_lift_title">解除悬停？</string>
+    <string name="dialog_lift_body">system_server 下次启动时，系统钩子会重新装上。如果其中一个是这台手机开不了机的原因，它可能再次开不了机——拿不准就先删掉那条钩子。</string>
+    <string name="action_lift_it">解除</string>
+    <string name="toast_lifted">已解除。system_server 下次重启时装上。</string>
+    <string name="label_system_framework">系统框架</string>
+
+    <!-- Accessibility repair -->
+    <string name="dialog_repair_title">修复无障碍服务？</string>
+    <string name="dialog_repair_body">这会把无障碍服务关掉再打开。那是唯一能清掉系统那个"出现故障"标记的做法——设置里的开关做不到，因为它显示的本来就是开。\n\n两条 root 命令，除此之外不跑任何东西：\n\n%1$s\n\n%2$s\n\n那个列表里其他所有无障碍服务都原样带过。</string>
+    <string name="action_repair">修复</string>
+    <string name="toast_repairing">正在修复…</string>
+    <string name="toast_repaired">无障碍已修复</string>
+    <string name="hookguard_lift_failed">文件已经删掉了，但属性没能清掉，所以系统钩子仍处于悬停。重启一次再试。</string>
+
+    <!-- The confirmation overlay -->
+    <string name="overlay_requested_by">请求方：%1$s</string>
+    <string name="overlay_command">命令</string>
+    <string name="overlay_reason">它说的理由</string>
+    <string name="overlay_deny">拒绝</string>
+    <string name="overlay_countdown">%1$d 秒</string>
+
+    <!-- Audit banners -->
+    <string name="audit_channel_handoff">解放双手期间的动作</string>
+    <string name="audit_channel_handoff_desc">闸门敞开那段时间里，agent 做了什么。</string>
+    <string name="audit_handoff_on_title">解放双手模式已开启</string>
+    <string name="audit_handoff_on_body">接下来 %1$d 分钟里，没有任何东西会先问你——包括 root shell 命令。这条横幅是你唯一会收到的报告。</string>
+    <string name="audit_handoff_off_title">解放双手模式已关闭</string>
+    <string name="audit_handoff_off_body">弹窗回来了：每个特权动作又都需要你批准了。%1$s</string>
+    <string name="audit_handoff_off_why">（%1$s）</string>
+    <string name="audit_more_folded">（以及上一条横幅之后的 %1$d 次）</string>
+    <string name="audit_action">解放双手 · %1$s</string>
+    <string name="handoff_reason_timeout">时间用完了</string>
+    <string name="handoff_reason_reboot">设备重启了</string>
+    <string name="handoff_reason_off">在应用里被关掉</string>
+
+    <!-- Service notification -->
+    <string name="notif_starting">正在启动…</string>
+    <string name="notif_channel_service">奈何桥服务</string>
+    <string name="notif_channel_service_desc">让 MCP 端点和设备桥保持运行</string>
+    <string name="notif_title">奈何桥正在运行</string>
+    <string name="notif_action_stop">停止</string>
+    <string name="notif_system_ok">系统桥正常</string>
+    <string name="notif_system_offline">系统桥离线</string>
+    <plurals name="notif_peers">
+        <item quantity="one">%1$d 个连接</item>
+        <item quantity="other">%1$d 个连接</item>
+    </plurals>
+    <string name="notif_handoff">解放双手 %1$s</string>
+
+    <!-- The dialog an application sees when it first asks to use the bridge -->
+    <string name="peer_confirm_title">应用想要连接</string>
+    <string name="peer_confirm_body">这个应用里跑着奈何桥模块，它请求使用设备桥。允许它会带来两个后果：该应用里的模块从此可以接收注入的代码、并向你报告事件。它本身并不授予任何设备控制权——每一个这样的动作仍会单独问你。</string>
+    <string name="peer_approve_label">奈何桥</string>
+</resources>

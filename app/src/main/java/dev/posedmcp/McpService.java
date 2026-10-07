@@ -69,7 +69,8 @@ public final class McpService extends Service {
                     // The window closed on its own. This is the case the user is
                     // definitely not watching for, and therefore the one they most
                     // need telling about.
-                    AuditNotifier.handoffEnded(McpService.this, "the window ran out");
+                    AuditNotifier.handoffEnded(McpService.this,
+                            getString(R.string.handoff_reason_timeout));
                 }
                 handoffWasArmed = armed;
                 updateNotification();
@@ -125,7 +126,7 @@ public final class McpService extends Service {
             Logx.i("hand-off mode cleared: the device has rebooted since it was armed");
             prefs.clearHandoff();
             handoffWasArmed = false;
-            AuditNotifier.handoffEnded(this, "the device rebooted");
+            AuditNotifier.handoffEnded(this, getString(R.string.handoff_reason_reboot));
         }
         // Mirror the bridge credentials where hooked processes can reach them.
         BridgeCredentials.publish(this, prefs.bridgeToken(), prefs.bridgePort());
@@ -147,7 +148,7 @@ public final class McpService extends Service {
     }
 
     private void startForegroundNow() {
-        Notification notification = buildNotification("Starting…");
+        Notification notification = buildNotification(getString(R.string.notif_starting));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification,
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
@@ -244,14 +245,10 @@ public final class McpService extends Service {
         ConfirmationGate.Decision decision = ConfirmationGate.request(this,
                 new ConfirmationGate.Request(
                         ConfirmationGate.Kind.PEER,
-                        "Application wants to connect",
+                        getString(R.string.peer_confirm_title),
                         pkg + describeApp(pkg),
-                        "This application hosts the 奈何桥 module and is asking to use the "
-                                + "device bridge. Allowing it lets the module inside that app "
-                                + "receive injected code and report events. It does not by "
-                                + "itself grant any device control - every such action still "
-                                + "asks you separately.",
-                        "奈何桥", prefs.confirmTimeoutMs()));
+                        getString(R.string.peer_confirm_body),
+                        getString(R.string.peer_approve_label), prefs.confirmTimeoutMs()));
 
         if (decision.approved) {
             trust.approve(pkg);
@@ -462,7 +459,7 @@ public final class McpService extends Service {
         prefs.clearHandoff();
         Logx.i("hand-off mode turned off");
         handoffWasArmed = false;
-        AuditNotifier.handoffEnded(this, "turned off in the app");
+        AuditNotifier.handoffEnded(this, getString(R.string.handoff_reason_off));
         updateNotification();
     }
 
@@ -484,9 +481,9 @@ public final class McpService extends Service {
         if (nm == null) {
             return;
         }
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "奈何桥 service",
-                NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("Keeps the MCP endpoint and device bridge running");
+        NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
+                getString(R.string.notif_channel_service), NotificationManager.IMPORTANCE_LOW);
+        channel.setDescription(getString(R.string.notif_channel_service_desc));
         nm.createNotificationChannel(channel);
     }
 
@@ -502,11 +499,12 @@ public final class McpService extends Service {
 
         return new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentTitle("奈何桥 is running")
+                .setContentTitle(getString(R.string.notif_title))
                 .setContentText(status)
                 .setContentIntent(open)
                 .setOngoing(true)
-                .addAction(new Notification.Action.Builder(null, "Stop", stop).build())
+                .addAction(new Notification.Action.Builder(null,
+                        getString(R.string.notif_action_stop), stop).build())
                 .build();
     }
 
@@ -517,9 +515,11 @@ public final class McpService extends Service {
         }
         String handoff = ConfirmationGate.handoffLeft(this);
         String status = "127.0.0.1:" + mcpPort() + " · "
-                + (systemBridgeConnected() ? "system bridge ok" : "system bridge offline")
-                + " · " + connectedPeers() + " peer(s)"
-                + (handoff.isEmpty() ? "" : " · HAND-OFF " + handoff);
+                + getString(systemBridgeConnected()
+                        ? R.string.notif_system_ok : R.string.notif_system_offline)
+                + " · " + getResources().getQuantityString(R.plurals.notif_peers,
+                        connectedPeers(), connectedPeers())
+                + (handoff.isEmpty() ? "" : " · " + getString(R.string.notif_handoff, handoff));
         try {
             nm.notify(NOTIFICATION_ID, buildNotification(status));
         } catch (Throwable ignored) {

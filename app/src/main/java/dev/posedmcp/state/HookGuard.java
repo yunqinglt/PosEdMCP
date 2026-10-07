@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 
 import dev.posedmcp.HiddenApi;
 import dev.posedmcp.Logx;
+import dev.posedmcp.R;
 import dev.posedmcp.root.RootShell;
 
 /**
@@ -117,8 +118,7 @@ public final class HookGuard {
         RootShell.Result result = RootShell.exec(
                 "setprop " + PROP_SUSPENDED + " " + LIFTED, 10_000L);
         if (!result.ok()) {
-            return "The file is gone, but the property could not be cleared, so system hooks"
-                    + " stay suspended. Reboot and try again.";
+            return context.getString(R.string.hookguard_lift_failed);
         }
         Logx.w("system-hook suspension lifted from the Hooks page");
         return null;

@@ -1,7 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- The app is called this in every language. -->
     <string name="app_name">奈何桥</string>
     <string name="about">About</string>
     <string name="xposed_description">Root-backed MCP server for on-device agents: confirmed shell execution, screen capture, input injection and dynamic code injection into scoped apps.</string>
     <!-- Shown in the system accessibility settings, so it says plainly what this is. -->
     <string name="accessibility_description">Lets 奈何桥 act on this device on your behalf: capture the screen, send taps and swipes, and read the current screen\'s controls. Everything it does also keeps the server running so an agent can reach it while another app is in front. Every action still asks you first.</string>
+
+    <!-- Tabs -->
+    <string name="tab_status">Status</string>
+    <string name="tab_scripts">Scripts</string>
+    <string name="tab_hooks">Hooks</string>
+
+    <!-- Words and buttons that recur everywhere -->
+    <string name="action_close">Close</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_run">Run</string>
+    <string name="action_open">Open</string>
+    <string name="action_understand">I understand</string>
+    <string name="toast_copied">Copied</string>
+    <string name="toast_start_service_first">Start the service first</string>
+    <string name="toast_no_app_for_url">Nothing on this device can open %1$s</string>
+
+    <!-- About -->
+    <string name="about_framework">ACTIVE FRAMEWORK</string>
+    <string name="about_not_running">the service is not running</string>
+    <string name="about_not_reported">not reported yet</string>
+    <string name="about_reported_by">reported by %1$s</string>
+    <string name="about_start_an_app">start any application in this module\'s scope and it will say</string>
+
+    <!-- Status tab -->
+    <string name="section_status">STATUS</string>
+    <string name="label_service">Service</string>
+    <string name="value_running">running</string>
+    <string name="value_stopped">stopped</string>
+    <string name="label_mcp_endpoint">MCP endpoint</string>
+    <string name="label_bridge_port">Bridge port</string>
+    <string name="label_system_bridge">System bridge</string>
+    <string name="value_connected">connected</string>
+    <string name="value_offline">offline</string>
+    <string name="label_module_processes">Module processes</string>
+    <string name="value_processes_connected">%1$d connected</string>
+    <string name="label_overlay_permission">Overlay permission</string>
+    <string name="value_granted">granted</string>
+    <string name="value_not_granted">NOT granted</string>
+    <string name="label_battery">Battery</string>
+    <string name="value_battery_unrestricted">unrestricted</string>
+    <string name="value_battery_optimised">OPTIMISED - the service will freeze</string>
+    <string name="label_accessibility">Accessibility</string>
+    <string name="value_a11y_enabled">enabled</string>
+    <string name="value_a11y_connecting">switched on, not connected yet</string>
+    <string name="value_a11y_stuck">ON BUT NOT RUNNING</string>
+    <string name="value_a11y_off">NOT enabled</string>
+    <string name="body_a11y_stuck">It is still switched on; the system is simply not running it, and it will not reconnect on its own. This usually means the accessibility framework marked the service malfunctioning when this app\'s process was killed - which this ROM does on its own schedule - after which it stops binding it. The switch in Settings already reads as on, which is why turning it \"on\" there changes nothing: it has to be switched off and on. Repair does exactly that.</string>
+    <string name="body_a11y_connecting">It is switched on and has not attached yet. This page is a snapshot rather than a live view, so it says this for a moment after the app restarts. If it still says it in a minute, it is the malfunction state and Repair is the answer.</string>
+    <string name="body_a11y_off">Accessibility is what keeps this app running: an application hosting an enabled accessibility service holds a system binding, so it is not frozen once it leaves the screen. Without it the MCP endpoint goes silent exactly when an agent in another app tries to use it. It is also what provides screen capture, gestures and the view tree without root.</string>
+    <string name="body_a11y_on">This is also what keeps the app alive: an application hosting an enabled accessibility service holds a system binding, so it is not frozen once it leaves the screen.</string>
+    <string name="action_repair_accessibility">Repair accessibility…</string>
+    <string name="body_battery_optimisation">Battery optimisation also freezes the process in the background. Grant unrestricted battery use, and on ColorOS also allow background activity for 奈何桥 in the battery settings.</string>
+    <string name="body_overlay_permission">Without the overlay permission, approval prompts fall back to a notification. If that also fails, privileged calls are refused.</string>
+
+    <string name="section_endpoint">ENDPOINT</string>
+    <string name="label_bearer_token">Bearer token</string>
+    <string name="action_copy_url">Copy URL</string>
+    <string name="action_copy_token">Copy token</string>
+    <string name="action_rotate">Rotate</string>
+    <string name="clip_url">奈何桥 URL</string>
+    <string name="clip_token">奈何桥 token</string>
+    <string name="toast_tokens_rotated">Tokens rotated</string>
+    <string name="body_endpoint_localhost">The listener binds to 127.0.0.1 only. To reach it from a PC over USB: adb forward tcp:%1$d tcp:%1$d</string>
+
+    <string name="section_actions">ACTIONS</string>
+    <string name="action_stop_service">Stop service</string>
+    <string name="action_start_service">Start service</string>
+    <string name="action_overlay">Overlay</string>
+    <string name="action_battery">Battery</string>
+    <string name="action_accessibility">Accessibility</string>
+    <string name="action_accessibility_settings">Accessibility settings</string>
+    <string name="toast_overlay_settings_failed">Could not open overlay settings</string>
+    <string name="toast_turn_on_in_list">Turn on 奈何桥 in the list</string>
+    <string name="toast_a11y_settings_failed">Could not open accessibility settings</string>
+    <string name="toast_a11y_read_failed">Could not read the accessibility settings</string>
+    <string name="toast_battery_settings_failed">Could not open battery settings</string>
+
+    <string name="section_confirmation_policy">CONFIRMATION POLICY</string>
+    <string name="body_confirmation_policy">Root shell commands always prompt and cannot be turned off. The others can be relaxed, because they use the module\'s platform access rather than a shell.</string>
+    <string name="toggle_confirm_screen">Confirm screen capture and UI dumps</string>
+    <string name="toggle_confirm_input">Confirm injected input</string>
+    <string name="toggle_confirm_plugin">Confirm plugin loading and calls</string>
+    <string name="toggle_autostart">Start automatically after reboot</string>
+
+    <string name="section_tools">TOOLS</string>
+    <string name="body_tools">Read-only tools never prompt. Everything else asks the user before it runs.</string>
+    <string name="tools_service_not_running">(the service is not running)</string>
+    <string name="tools_read_only">read-only</string>
+    <string name="tools_always_prompts">ALWAYS prompts</string>
+    <string name="tools_prompts">prompts</string>
+
+    <!-- Hand-off mode -->
+    <string name="section_handoff">HAND-OFF MODE</string>
+    <string name="handoff_line">ON — %1$d:%2$s left</string>
+    <string name="body_handoff_on">Every tool the agent calls is running the moment it is asked for, with nothing checking it first - root shell commands included. It switches itself off when the time runs out, and a reboot ends it early. This app being killed and restarted does not - this ROM does that on its own, and losing the window to a memory sweep would help nobody.</string>
+    <string name="action_extend_minutes">Extend %1$d min</string>
+    <string name="action_turn_off_now">Turn off now</string>
+    <string name="body_handoff_intro">The approval dialog is the only thing standing between the agent and this device. Hand-off mode takes it away: for a while, every action runs the moment it is asked for.</string>
+    <string name="body_handoff_warning">It is for the case where you are deliberately letting the agent work through a long sequence without you. It is also the mode that can leave the phone unbootable, so it expires by itself and there is no way to make it stick - only to arm it again.</string>
+    <string name="action_arm_handoff">Arm hand-off mode…</string>
+    <string name="handoff_warn1_title">Hand-off mode: no more prompts</string>
+    <string name="handoff_warn1_body">While this is on, everything the agent calls runs immediately. Root shell commands, injected taps and text, code loaded into other apps, screenshots of whatever is on screen - none of it will ask you first.</string>
+    <string name="handoff_warn2_title">That includes root</string>
+    <string name="handoff_warn2_body">The root shell is the one thing that could never be switched off, on purpose - it is why this project exists at all. Hand-off mode covers it too.</string>
+    <string name="handoff_warn3_title">This can break the phone</string>
+    <string name="handoff_warn3_body">A command that deletes files, disables a system component or writes to a partition will run exactly as the agent typed it, with nothing in between. That can leave this device unable to boot, and there is no undo - the audit log records what ran, but it cannot put anything back.</string>
+    <string name="handoff_type_body">Type %1$s below to enable the button. A pocket, a mis-tap or a stray touch cannot do this - only you, reading this, can.</string>
+    <string name="handoff_type_title">Type %1$s to arm it</string>
+    <string name="action_arm_minutes">Arm for %1$d min</string>
+    <string name="toast_handoff_armed">Hand-off armed for %1$d minutes</string>
+    <string name="toast_handoff_extended">Extended - %1$d minutes left</string>
+    <string name="toast_handoff_off">Hand-off off - prompts are back</string>
+
+    <!-- Scripts tab -->
+    <string name="scripts_headline">Saved scripts</string>
+    <string name="scripts_intro">Scripts the agent filed for you. Running one from here is your own tap, so it runs without an approval prompt. The result of the last run is kept under each script.</string>
+    <string name="section_nothing_saved">NOTHING SAVED YET</string>
+    <string name="scripts_empty_body">Ask the agent to save a script and it appears here, with a line saying what it does.</string>
+    <plurals name="scripts_count">
+        <item quantity="one">%1$d SCRIPT</item>
+        <item quantity="other">%1$d SCRIPTS</item>
+    </plurals>
+    <string name="script_in">in %1$s</string>
+    <string name="script_never_run">never run</string>
+    <string name="script_outcome_ok">ok  %1$s%2$s</string>
+    <string name="script_outcome_failed">FAILED  %1$s%2$s</string>
+    <string name="script_no_output">(finished, no output)</string>
+    <string name="toast_running_script">Running %1$s</string>
+    <string name="dialog_delete_script_title">Delete %1$s?</string>
+    <string name="dialog_delete_script_body">It is removed from the library. This cannot be undone.</string>
+    <string name="dialog_a11y_off_title">Accessibility is off</string>
+    <string name="dialog_a11y_off_body">Running a script brings its app to the front, which puts this one in the background. Without the accessibility service the system freezes this app there and the run never finishes. Turn it on, then run again.</string>
+
+    <!-- Hooks tab -->
+    <string name="hooks_headline">Kept hooks</string>
+    <string name="hooks_intro">Hooks the agent registered and you kept. Unlike a hook you watch for a minute, these are put back into the app automatically every time it starts - so this page is where you see what is running without asking again, and where you stop it. Switching one off or deleting it reaches into the app that is running now, not just the record.</string>
+    <string name="hooks_guard_installed">Rescue module: installed. If a system hook ever stops the device finishing boot, it suspends them on its own.</string>
+    <string name="hooks_guard_missing">Rescue module: not installed. Nothing but recovery would stop a system hook that leaves the phone unable to boot.</string>
+    <string name="section_nothing_registered">NOTHING REGISTERED YET</string>
+    <string name="hooks_empty_body">Ask the agent to hook a method and it appears here, grouped by the application it lives in.</string>
+    <plurals name="apps_count">
+        <item quantity="one">%1$d APP</item>
+        <item quantity="other">%1$d APPS</item>
+    </plurals>
+    <string name="hook_app_header">%1$s   ·   %2$d of %3$d on</string>
+    <string name="action_source">Source</string>
+    <string name="hook_off">off — kept, but not put into the app</string>
+    <string name="hook_failed">FAILED — %1$s</string>
+    <string name="hook_not_armed">on — not armed yet; it goes in when the app next starts</string>
+    <string name="hook_last_armed">on — last armed %1$s</string>
+    <string name="toast_hook_saved_later">Saved. It will be armed when the app next starts.</string>
+    <string name="toast_hook_saved_nothing_to_stop">Saved. The app is not running, so there was nothing to stop.</string>
+    <string name="toast_hook_armed">Armed in %1$d process(es)</string>
+    <string name="toast_hook_not_taken">Saved, but no process took it</string>
+    <string name="toast_hook_stopped">Stopped in the running app</string>
+    <string name="toast_hook_unreachable">Could not reach the app: %1$s</string>
+    <string name="dialog_delete_hook_title">Delete this hook?</string>
+    <string name="dialog_delete_hook_body">%1$s\n\nIt is removed from the library and unhooked in the running app. It will not come back when the app restarts.</string>
+    <string name="hooks_suspended_title">System hooks are suspended</string>
+    <string name="hooks_suspended_body">The posedmcp-guard rescue module stopped system hooks being armed, because this device failed to finish booting more than once with one in place. Nothing is being put into system_server until you lift this; the hooks themselves are still kept and are listed below.</string>
+    <string name="action_lift_suspension">Lift the suspension</string>
+    <string name="dialog_lift_title">Lift the suspension?</string>
+    <string name="dialog_lift_body">System hooks will be armed again when system_server next starts. If one of them is what stopped the phone booting, it may not boot again - delete that hook first if you are not sure.</string>
+    <string name="action_lift_it">Lift it</string>
+    <string name="toast_lifted">Lifted. They arm when system_server next restarts.</string>
+    <string name="label_system_framework">System Framework</string>
+
+    <!-- Accessibility repair -->
+    <string name="dialog_repair_title">Repair the accessibility service?</string>
+    <string name="dialog_repair_body">This switches it off and on again. That is the only thing that clears the system\'s \"malfunctioning\" mark - the switch in Settings cannot, because it already reads as on.\n\nTwo root commands, and nothing else runs:\n\n%1$s\n\n%2$s\n\nEvery other accessibility service in that list is carried through unchanged.</string>
+    <string name="action_repair">Repair</string>
+    <string name="toast_repairing">Repairing…</string>
+    <string name="toast_repaired">Accessibility repaired</string>
+    <string name="hookguard_lift_failed">The file is gone, but the property could not be cleared, so system hooks stay suspended. Reboot and try again.</string>
+
+    <!-- The confirmation overlay -->
+    <string name="overlay_requested_by">Requested by: %1$s</string>
+    <string name="overlay_command">COMMAND</string>
+    <string name="overlay_reason">STATED REASON</string>
+    <string name="overlay_deny">Deny</string>
+    <string name="overlay_countdown">%1$ds</string>
+
+    <!-- Audit banners -->
+    <string name="audit_channel_handoff">Hand-off activity</string>
+    <string name="audit_channel_handoff_desc">What the agent did while hand-off mode had the gate open.</string>
+    <string name="audit_handoff_on_title">Hand-off mode is ON</string>
+    <string name="audit_handoff_on_body">For the next %1$d minutes nothing will ask you first - root shell commands included. This banner is the only report you will get.</string>
+    <string name="audit_handoff_off_title">Hand-off mode is off</string>
+    <string name="audit_handoff_off_body">Prompts are back: every privileged action needs your approval again.%1$s</string>
+    <string name="audit_handoff_off_why"> (%1$s)</string>
+    <string name="audit_more_folded">(and %1$d more since the last banner)</string>
+    <string name="audit_action">Hand-off · %1$s</string>
+    <string name="handoff_reason_timeout">the window ran out</string>
+    <string name="handoff_reason_reboot">the device rebooted</string>
+    <string name="handoff_reason_off">turned off in the app</string>
+
+    <!-- Service notification -->
+    <string name="notif_starting">Starting…</string>
+    <string name="notif_channel_service">奈何桥 service</string>
+    <string name="notif_channel_service_desc">Keeps the MCP endpoint and device bridge running</string>
+    <string name="notif_title">奈何桥 is running</string>
+    <string name="notif_action_stop">Stop</string>
+    <string name="notif_system_ok">system bridge ok</string>
+    <string name="notif_system_offline">system bridge offline</string>
+    <plurals name="notif_peers">
+        <item quantity="one">%1$d peer</item>
+        <item quantity="other">%1$d peers</item>
+    </plurals>
+    <string name="notif_handoff">HAND-OFF %1$s</string>
+
+    <!-- The dialog an application sees when it first asks to use the bridge -->
+    <string name="peer_confirm_title">Application wants to connect</string>
+    <string name="peer_confirm_body">This application hosts the 奈何桥 module and is asking to use the device bridge. Allowing it lets the module inside that app receive injected code and report events. It does not by itself grant any device control - every such action still asks you separately.</string>
+    <string name="peer_approve_label">奈何桥</string>
 </resources>
