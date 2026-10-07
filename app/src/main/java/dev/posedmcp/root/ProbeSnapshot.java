@@ -42,6 +42,9 @@ public final class ProbeSnapshot {
     private static final String[] PLATFORM_PREFIXES = {
             "java.", "javax.", "android.", "dalvik.", "sun.", "jdk.", "libcore.",
             "com.android.", "org.apache.", "kotlin.", "kotlinx.", "okhttp3.", "io.reactivex.",
+            // This module's own threads (apphost, bridge, record feed) are the
+            // tool, not the finding.
+            "dev.posedmcp.",
     };
 
     private ProbeSnapshot() {
@@ -223,6 +226,28 @@ public final class ProbeSnapshot {
         }
         int[] counts = foreign.computeIfAbsent(classPkg, k -> new int[1]);
         counts[0]++;
+    }
+
+    /**
+     * Which non-platform, non-app packages own the most frames, counted over
+     * either stack source - the in-process snapshot and the ANR trace share
+     * one frame format, so both flow through the same counter.
+     */
+    public static JSONArray foreignPackages(String pkg, JSONArray threads) {
+        Map<String, int[]> foreign = new LinkedHashMap<>();
+        if (threads != null) {
+            for (int i = 0; i < threads.length(); i++) {
+                JSONObject thread = threads.optJSONObject(i);
+                JSONArray stack = thread == null ? null : thread.optJSONArray("stack");
+                if (stack == null) {
+                    continue;
+                }
+                for (int j = 0; j < stack.length(); j++) {
+                    countForeign(foreign, pkg, stack.optString(j, ""));
+                }
+            }
+        }
+        return foreignJson(foreign);
     }
 
     private static JSONArray foreignJson(Map<String, int[]> foreign) {

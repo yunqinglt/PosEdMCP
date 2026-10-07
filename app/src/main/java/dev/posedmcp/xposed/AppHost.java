@@ -148,6 +148,11 @@ public final class AppHost {
                         args.optString("source", ""),
                         args.optLong("max_instructions", LuaRuntime.DEFAULT_MAX_INSTRUCTIONS));
             });
+            // The probe's in-process half: threads read from inside the process,
+            // which is the one stack source that works where SIGQUIT is
+            // swallowed. Asked for by the app in the moment before it freezes
+            // this process - a frozen process answers nothing.
+            bridge.registerHandler("probe_snapshot", args -> ProbeOps.threadSnapshot());
             bridge.registerHandler("ping", args -> new JSONObject().put("pong", true)
                     // Which hook framework loaded us, and therefore which HookApi
                     // every hook in this process is built on. Read here rather

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import dev.posedmcp.Logx;
+import dev.posedmcp.McpService;
 import dev.posedmcp.R;
 import dev.posedmcp.a11y.AccessibilityBridge;
 import dev.posedmcp.state.Prefs;
@@ -171,18 +172,61 @@ public final class ProcessProbe {
             State state = new State(pkg, pids, starts, now, now + durationMs);
 
             // The scene is captured before the freeze: a stopped process does
-            // not handle SIGQUIT, and the whole point of the freeze is what
-            // the scene was. Best-effort - a lost snapshot must never lose the
-            // freeze itself. A failed one is still filed, so probe_state can
-            // say why there are no stacks instead of letting the model guess.
-            JSONObject snapshot = ProbeSnapshot.capture(ctx, pkg, pids[0]);
+            // not handle signals or answer bridges, and the whole point of the
+            // freeze is what the scene was. Best-effort - a lost snapshot must
+            // never lose the freeze itself.
+            //
+            // Two stack sources, in order of preference. The in-process
+            // snapshot (the module inside a scoped app reads its own threads)
+            // is fast and works where SIGQUIT is swallowed; the ANR trace is
+            // the fallback for apps the module is not inside. An app already
+            // known to swallow SIGQUIT skips the doomed trace wait entirely.
+            JSONObject snapshot = null;
+            McpService service = McpService.instance();
+            boolean peer = service != null && service.hasPeer(pkg);
+            ProbeStore store = ProbeStore.instance();
+            JSONObject latest = store == null ? null : store.latest(pkg);
+            boolean swallow = latest != null && latest.has("captureError");
+            if (peer) {
+                snapshot = service.probeSnapshot(pkg, 3_000L);
+            }
+            if (snapshot == null && !swallow) {
+                snapshot = ProbeSnapshot.capture(ctx, pkg, pids[0]);
+            }
+            String captureError = ProbeSnapshot.lastError();
             if (snapshot == null) {
                 try {
                     snapshot = new JSONObject();
-                    snapshot.put("captureError", ProbeSnapshot.lastError());
+                    snapshot.put("captureError", captureError != null && !captureError.isEmpty()
+                            ? captureError : "the process did not answer the snapshot request");
                     snapshot.put("capturedAt", System.currentTimeMillis());
                 } catch (Throwable ignored) {
                     snapshot = null;
+                }
+            }
+            // App-side additions while the target is still responsive: the
+            // view tree cannot be read from a frozen app by any tool, so it
+            // has to be taken now, and the activity labels the scene.
+            if (snapshot != null) {
+                try {
+                    String raw = service == null ? null : service.foregroundRaw();
+                    if (raw != null && raw.startsWith(pkg)) {
+                        snapshot.put("activity", raw);
+                    }
+                } catch (Throwable ignored) {
+                }
+                try {
+                    JSONObject ui = AccessibilityBridge.activeWindowTree(120, true);
+                    if (ui != null) {
+                        snapshot.put("ui", ui);
+                    }
+                } catch (Throwable t) {
+                    Logx.w("probe: view tree capture failed: " + t);
+                }
+                try {
+                    snapshot.put("foreignPackages",
+                            ProbeSnapshot.foreignPackages(pkg, snapshot.optJSONArray("threads")));
+                } catch (Throwable ignored) {
                 }
             }
 
@@ -206,7 +250,6 @@ public final class ProcessProbe {
             current = state;
             if (snapshot != null) {
                 try {
-                    ProbeStore store = ProbeStore.instance();
                     if (store != null) {
                         store.add(pkg, snapshot);
                     }

@@ -11,8 +11,8 @@ android {
         applicationId = "dev.posedmcp"
         minSdk = 31
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.0.8"
+        versionCode = 10
+        versionName = "1.0.9"
 
         // Only the ABI the module is used on. The library is small, but the APK
         // is loaded into every scoped process, so there is no reason to carry

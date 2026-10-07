@@ -1312,6 +1312,12 @@ public final class ToolRegistry {
                             out.put("threads", snapshot.optJSONArray("threads"));
                             out.put("foreignPackages", snapshot.optJSONArray("foreignPackages"));
                         }
+                        if (snapshot.has("activity")) {
+                            out.put("activity", snapshot.optString("activity"));
+                        }
+                        if (snapshot.has("ui")) {
+                            out.put("ui", snapshot.optJSONObject("ui"));
+                        }
                     }
 
                     JSONArray notes = new JSONArray();
@@ -1319,6 +1325,10 @@ public final class ToolRegistry {
                             + " sees the same frame for as long as this freeze lasts.");
                     notes.put("It releases itself in " + (state.remainingMs() / 1000L)
                             + "s (probe_resume releases it earlier).");
+                    if (snapshot != null && snapshot.has("ui")) {
+                        notes.put("ui is the view tree captured just before the freeze - a frozen"
+                                + " app answers no tool, so this is the only copy of it.");
+                    }
                     if (snapshot != null && snapshot.has("captureError")) {
                         notes.put("The Java stacks could not be captured: "
                                 + snapshot.optString("captureError")

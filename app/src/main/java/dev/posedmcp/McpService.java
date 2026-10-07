@@ -17,6 +17,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.json.JSONObject;
+
 import dev.posedmcp.a11y.AccessibilityBridge;
 import dev.posedmcp.ipc.BridgeCredentials;
 import dev.posedmcp.ipc.BridgeServer;
@@ -151,19 +153,49 @@ public final class McpService extends Service {
      * ("pkg/Activity"), so the component half is stripped here.
      */
     public String foregroundPackage() {
+        String pkg = foregroundRaw();
+        if (pkg == null) {
+            return null;
+        }
+        int slash = pkg.indexOf('/');
+        if (slash >= 0) {
+            pkg = pkg.substring(0, slash);
+        }
+        return pkg.isEmpty() ? null : pkg;
+    }
+
+    /** The poller's raw foreground string ("pkg/Activity"), or null. */
+    public String foregroundRaw() {
         Capabilities caps = capabilities;
         if (caps == null) {
             return null;
         }
         try {
-            String pkg = caps.systemForeground().optString("foreground", "");
-            int slash = pkg.indexOf('/');
-            if (slash >= 0) {
-                pkg = pkg.substring(0, slash);
-            }
-            return pkg.isEmpty() ? null : pkg;
+            String fg = caps.systemForeground().optString("foreground", "");
+            return fg.isEmpty() ? null : fg;
         } catch (Throwable t) {
             Logx.w("probe: systemForeground failed: " + t);
+            return null;
+        }
+    }
+
+    /**
+     * The in-process thread snapshot from one of the package's live bridge
+     * peers, or null when no peer answers it - which is also what an older
+     * module build reports, since it has never heard of the op. The frozen
+     * process must be asked before the freeze, not during: a frozen process
+     * answers nothing.
+     */
+    public JSONObject probeSnapshot(String pkg, long timeoutMs) {
+        Capabilities caps = capabilities;
+        if (caps == null) {
+            return null;
+        }
+        try {
+            JSONObject result = caps.appCall(pkg, "probe_snapshot", new JSONObject(), timeoutMs);
+            return result != null && result.has("threads") ? result : null;
+        } catch (Throwable t) {
+            Logx.w("probe: in-process snapshot failed for " + pkg + ": " + t);
             return null;
         }
     }
