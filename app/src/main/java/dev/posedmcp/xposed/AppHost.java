@@ -141,6 +141,12 @@ public final class AppHost {
                     .put("hooks", HookRegistry.snapshot().size()));
             bridge.start();
             client = bridge;
+            // Records are pushed out as they are made rather than read back on
+            // demand: this app may be reclaimed seconds from now, and a record
+            // that only exists inside it is a record nobody will ever see.
+            HookRegistry.setRecordSink(
+                    new RecordFeed("posedmcp-hook-feed-" + packageName,
+                            record -> emit(Wire.HOOK_RECORD_EVENT, record)));
         } catch (Throwable t) {
             Logx.e("AppHost.install failed for " + packageName, t);
         }

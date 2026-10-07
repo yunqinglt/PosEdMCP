@@ -18,10 +18,12 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import dev.posedmcp.Logx;
@@ -35,6 +37,7 @@ import dev.posedmcp.root.RootShell;
 import dev.posedmcp.state.DeviceStatus;
 import dev.posedmcp.state.EventStore;
 import dev.posedmcp.state.HookGuard;
+import dev.posedmcp.state.HookRecordStore;
 import dev.posedmcp.state.HookStore;
 import dev.posedmcp.state.Prefs;
 import dev.posedmcp.state.SavedHook;
@@ -86,6 +89,7 @@ public final class ToolRegistry {
     private final Capabilities capabilities;
     private final BridgeServer bridge;
     private final EventStore events;
+    private final HookRecordStore hookRecords;
     private final Map<String, McpTool> tools = new LinkedHashMap<>();
 
     /** Set from the MCP handshake so prompts can name the agent that asked. */
@@ -110,12 +114,13 @@ public final class ToolRegistry {
     }
 
     public ToolRegistry(Context context, Prefs prefs, Capabilities capabilities, BridgeServer bridge,
-            EventStore events) {
+            EventStore events, HookRecordStore hookRecords) {
         this.context = context;
         this.prefs = prefs;
         this.capabilities = capabilities;
         this.bridge = bridge;
         this.events = events;
+        this.hookRecords = hookRecords;
         registerAll();
     }
 
@@ -1143,7 +1148,12 @@ public final class ToolRegistry {
         add(McpTool.of("hook_records")
                 .title("Read recorded calls")
                 .description("Returns what the hooks installed by hook_method have captured,"
-                        + " newest first. Read-only.")
+                        + " newest first. Read-only."
+                        + "\n\nRecords are kept by this app from the moment they are made, so"
+                        + " they cover calls made by processes that have since been killed -"
+                        + " which on many devices is a matter of seconds. Asking the process"
+                        + " itself would report nothing in exactly the case worth investigating."
+                        + " A record's `source` is the process it came from.")
                 .readOnly()
                 .input(props(
                         "package", McpTool.string("Target package to read from."
@@ -1153,16 +1163,27 @@ public final class ToolRegistry {
                         "package")
                 .handler(args -> {
                     String pkg = require(args, "package");
+                    String subject = args.optString("subject", "");
+                    int limit = args.has("limit") ? args.optInt("limit", 100) : 100;
                     JSONObject call = new JSONObject();
-                    call.put("subject", args.optString("subject", ""));
-                    call.put("limit", args.optInt("limit", 100));
+                    call.put("subject", subject);
+                    call.put("limit", limit);
 
-                    // Hooks are per-process, so every process has to be asked;
-                    // querying one of them would report an empty list while a
-                    // hook sits in a sibling.
+                    // The armed hooks are live state, so every process still has
+                    // to be asked - a hook sits in the process it was installed
+                    // into, and asking one of them would report "nothing is
+                    // hooked" while a hook sits in a sibling.
+                    //
+                    // The records are read from the app instead. They were pushed
+                    // there as they were made, so they describe processes that
+                    // have since been killed - which on this device is all of
+                    // them, within seconds. Reading them back from a live process
+                    // was why a hook that was recording the whole time could
+                    // still report nothing.
                     JSONArray across = capabilities.appCallAll(pkg, "hook_records", call, 20_000L);
                     JSONArray hooks = new JSONArray();
-                    JSONArray records = new JSONArray();
+                    JSONArray liveRecords = new JSONArray();
+                    long dropped = 0L;
                     for (int i = 0; i < across.length(); i++) {
                         JSONObject entry = across.optJSONObject(i);
                         if (entry == null || !entry.optBoolean("ok", false)) {
@@ -1172,14 +1193,45 @@ public final class ToolRegistry {
                         if (result == null) {
                             continue;
                         }
-                        tag(entry.optString("process", ""), result.optJSONArray("hooks"), hooks);
-                        tag(entry.optString("process", ""), result.optJSONArray("records"), records);
+                        String process = entry.optString("process", "");
+                        tag("process", process, result.optJSONArray("hooks"), hooks);
+                        tag("source", process, result.optJSONArray("records"), liveRecords);
+                        dropped += result.optLong("droppedRecords", 0L);
                     }
+
+                    Set<String> seen = new HashSet<>();
+                    List<JSONObject> merged = new ArrayList<>();
+                    for (JSONObject record : hookRecords.query(
+                            Collections.singletonList(BridgeServer.peerKeyPrefix(pkg)), subject,
+                            limit)) {
+                        if (remember(seen, record)) {
+                            merged.add(record);
+                        }
+                    }
+                    for (int i = 0; i < liveRecords.length(); i++) {
+                        JSONObject record = liveRecords.optJSONObject(i);
+                        if (record != null && remember(seen, record)) {
+                            merged.add(record);
+                        }
+                    }
+                    merged.sort((a, b) -> Long.compare(b.optLong("ts", 0L), a.optLong("ts", 0L)));
+
+                    JSONArray records = new JSONArray();
+                    for (int i = 0; i < merged.size() && records.length() < limit; i++) {
+                        records.put(merged.get(i));
+                    }
+
                     JSONObject out = new JSONObject();
                     out.put("hooks", hooks);
                     out.put("records", records);
-                    if (hooks.length() == 0) {
-                        out.put("note", "nothing is hooked in any process of this package");
+                    if (dropped > 0) {
+                        out.put("droppedRecords", dropped);
+                        out.put("note", dropped + " record(s) could not be handed to this app and"
+                                + " were lost - which is a fault in the bridge, not in the hooks.");
+                    } else if (records.length() == 0) {
+                        out.put("note", hooks.length() == 0
+                                ? "nothing is hooked in any process of this package"
+                                : "hooks are armed but nothing has called them yet");
                     }
                     return McpTool.json(out);
                 })
@@ -1917,7 +1969,8 @@ public final class ToolRegistry {
     }
 
     /** Copies items into a combined list, recording which process each came from. */
-    private static void tag(String process, JSONArray from, JSONArray into) throws Exception {
+    private static void tag(String field, String value, JSONArray from, JSONArray into)
+            throws Exception {
         if (from == null) {
             return;
         }
@@ -1926,9 +1979,27 @@ public final class ToolRegistry {
             if (item == null) {
                 continue;
             }
-            item.put("process", process);
+            item.put(field, value);
             into.put(item);
         }
+    }
+
+    /**
+     * True the first time a record is seen.
+     *
+     * <p>A record reaches the app as it is made and also stays in the process
+     * that made it, so while that process lives the same call arrives down both
+     * paths. Its seq identifies it within that process, which is why the source
+     * is part of the key: two apps, or two runs of one app, count independently.
+     * A record without a seq comes from a build that did not write one, and is
+     * taken at face value rather than silently folded into its neighbour.
+     */
+    private static boolean remember(Set<String> seen, JSONObject record) {
+        long seq = record.optLong("seq", 0L);
+        if (seq <= 0L) {
+            return true;
+        }
+        return seen.add(record.optString("source", "") + "#" + seq);
     }
 
     /**

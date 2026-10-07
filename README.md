@@ -328,6 +328,19 @@ hook_method               what actually happens at runtime (zero DEX, the module
   **every** process of the package, and `hook_records` merges results across processes with
   their origin labelled. An app often has several processes, and asking only one of them
   gets you the misleading answer "nothing is hooked"
+- **A record outlives the process that made it.** A hook writes wherever it was installed,
+  and a ROM that reclaims an app seconds after it leaves the foreground took every record
+  with it — so `hook_records` reported an empty list for a hook that had been recording the
+  whole time, which reads exactly like a hook that never matched. Each record is therefore
+  pushed to the app the moment it closes, and kept there in a bounded ring (1000 records)
+  backed by a file (~256 KB, trimmed from the ring). `hook_records` reads that copy, which is
+  why it can describe processes that are already gone; a live process is still asked, for its
+  armed hooks and their errors, and for its own copy of the records — which is the only one
+  that survives the bridge being down. Records that could not be handed over are counted and
+  reported as `droppedRecords` rather than left as a silent gap.
+  **This does mean argument values from third-party apps reach the disk.** They are the point
+  of the feature, but they are someone else's data: the file is bounded, stays in the app's
+  private storage, and is never sent anywhere.
 
 ## Injected logic: why Lua
 

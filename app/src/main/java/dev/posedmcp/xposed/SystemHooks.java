@@ -119,6 +119,11 @@ public final class SystemHooks {
             });
             bridge.start();
             client = bridge;
+            // Same bargain as in an ordinary app, for the opposite reason: this
+            // process outlives every app, so its records are the ones most worth
+            // keeping, and the app may restart long before they are read back.
+            HookRegistry.setRecordSink(new RecordFeed("posedmcp-hook-feed-system",
+                    record -> emit(Wire.HOOK_RECORD_EVENT, record)));
             Logx.i("system hooks installed in system_server");
 
             // Screen state comes from broadcasts, which need the system Context.

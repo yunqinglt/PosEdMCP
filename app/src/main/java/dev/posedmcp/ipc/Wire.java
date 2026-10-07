@@ -25,6 +25,15 @@ public final class Wire {
     public static final String ROLE_SYSTEM = "system";
     public static final String ROLE_APP = "app";
 
+    /**
+     * The event a hooked process pushes for every call its hooks record.
+     *
+     * <p>Part of the protocol rather than of either end: the module produces it
+     * on threads inside someone else's app, and the app consults nothing but
+     * this name to decide where it goes.
+     */
+    public static final String HOOK_RECORD_EVENT = "hook.record";
+
     /** Guard against a malformed peer streaming an unbounded line. */
     public static final int MAX_LINE_CHARS = 64 * 1024 * 1024;
 

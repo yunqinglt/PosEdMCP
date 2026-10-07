@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import dev.posedmcp.plugin.HookApi;
 
@@ -44,7 +45,40 @@ public final class HookRegistry {
     /** Correlates the two halves of one call, per thread. */
     private static final ThreadLocal<Record> IN_FLIGHT = new ThreadLocal<>();
 
+    /**
+     * Identifies a record within this process.
+     *
+     * <p>Starts somewhere random in a wide range rather than at one. Pids are
+     * reused, and a record is identified by the process it came from plus this
+     * number - so a run that began counting at one again under the same pid
+     * would hand out seqs that a dead run had already used, and its calls would
+     * be taken for copies of that run's and dropped.
+     */
+    private static final AtomicLong NEXT_SEQ =
+            new AtomicLong(java.util.concurrent.ThreadLocalRandom.current().nextLong(1L << 48));
+
+    /** Records produced but not taken by the sink. Reported, never hidden. */
+    private static final AtomicLong DROPPED = new AtomicLong();
+
+    private static volatile RecordSink sink;
+
     private HookRegistry() {
+    }
+
+    /**
+     * Where a finished record is handed so that it outlives this process.
+     *
+     * <p>Installed by whatever owns the bridge in this process. It is called on
+     * the application's own thread, in the middle of the call being recorded, so
+     * an implementation must not block and must not throw.
+     */
+    public interface RecordSink {
+        /** @return {@code false} if the record could not be taken and was dropped */
+        boolean accept(JSONObject record);
+    }
+
+    public static void setRecordSink(RecordSink newSink) {
+        sink = newSink;
     }
 
     /**
@@ -105,6 +139,7 @@ public final class HookRegistry {
     }
 
     private static final class Record {
+        long seq;
         long timestamp;
         String thread;
         String[] args;
@@ -372,11 +407,46 @@ public final class HookRegistry {
         if (entry.bodyError != null) {
             record.bodyError = entry.bodyError;
         }
+        // Assigned here rather than only when the record is published, so that a
+        // copy of it arriving from either path can be recognised as the same one.
+        record.seq = NEXT_SEQ.incrementAndGet();
         synchronized (entry.records) {
             entry.records.addLast(record);
             while (entry.records.size() > entry.maxRecords) {
                 entry.records.removeFirst();
             }
+        }
+        publish(entry.key(), record);
+    }
+
+    /**
+     * Hands a finished record to the app, which is what makes it outlive this
+     * process.
+     *
+     * <p>The process a hook lives in is the shortest-lived thing involved: a ROM
+     * that reclaims an app a few seconds after it leaves the foreground takes
+     * every record in it along. Reading records on demand can therefore only
+     * ever describe the last few seconds, and reports an empty list for a hook
+     * that was in fact recording the whole time - indistinguishable from one
+     * that never matched. Pushing each record out as it is made costs nothing
+     * the hook was not already paying for, and lets hook_records answer for a
+     * process that is already gone.
+     *
+     * <p>The local deque is still kept: it is the only copy that survives the
+     * bridge being down, so a live process can always answer for itself.
+     */
+    private static void publish(String target, Record record) {
+        RecordSink current = sink;
+        if (current == null) {
+            return;
+        }
+        boolean taken = false;
+        try {
+            taken = current.accept(toJson(target, record));
+        } catch (Throwable ignored) {
+        }
+        if (!taken) {
+            DROPPED.incrementAndGet();
         }
     }
 
@@ -414,6 +484,13 @@ public final class HookRegistry {
         JSONObject out = new JSONObject();
         out.put("hooks", hooked);
         out.put("records", array);
+        long dropped = DROPPED.get();
+        if (dropped > 0) {
+            // Said out loud rather than left as a gap in the list: an agent that
+            // cannot tell "nothing matched" from "the record was lost" draws the
+            // wrong conclusion about the hook it is debugging.
+            out.put("droppedRecords", dropped);
+        }
         if (hooked.length() == 0) {
             out.put("note", HOOKS.isEmpty()
                     ? "nothing is hooked in this process yet"
@@ -718,6 +795,7 @@ public final class HookRegistry {
         JSONObject o = new JSONObject();
         try {
             o.put("target", key);
+            o.put("seq", record.seq);
             o.put("ts", record.timestamp);
             o.put("thread", record.thread);
             JSONArray args = new JSONArray();

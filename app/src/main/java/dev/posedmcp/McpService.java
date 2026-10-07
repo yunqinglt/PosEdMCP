@@ -27,6 +27,7 @@ import dev.posedmcp.root.AuditNotifier;
 import dev.posedmcp.root.ConfirmationGate;
 import dev.posedmcp.state.DeviceStatus;
 import dev.posedmcp.state.EventStore;
+import dev.posedmcp.state.HookRecordStore;
 import dev.posedmcp.state.PeerTrust;
 import dev.posedmcp.state.Prefs;
 import dev.posedmcp.state.SavedHook;
@@ -84,6 +85,7 @@ public final class McpService extends Service {
 
     private Prefs prefs;
     private EventStore events;
+    private HookRecordStore hookRecords;
     private BridgeServer bridge;
     private McpServer mcp;
     private ToolRegistry tools;
@@ -164,16 +166,20 @@ public final class McpService extends Service {
         }
         try {
             events = new EventStore();
+            // Hook records are kept apart from the event feed and on disk: they
+            // are produced by processes that may be gone before anyone reads
+            // them, and this app is one of them.
+            hookRecords = new HookRecordStore(this);
             // Window transitions come from the accessibility service, which runs
             // in this process, so they can go straight into the feed.
             AccessibilityBridge.setEventSink((type, data) ->
                     events.add("a11y", type, data, System.currentTimeMillis()));
-            bridge = new BridgeServer(prefs.bridgePort(), prefs.bridgeToken(), events,
+            bridge = new BridgeServer(prefs.bridgePort(), prefs.bridgeToken(), events, hookRecords,
                     this::trustPeer, this::onPeerReady);
             bridge.start();
 
             Capabilities capabilities = new Capabilities(this, bridge);
-            tools = new ToolRegistry(this, prefs, capabilities, bridge, events);
+            tools = new ToolRegistry(this, prefs, capabilities, bridge, events, hookRecords);
             mcp = new McpServer(this, prefs, tools, events);
             mcp.start();
 

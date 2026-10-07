@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import dev.posedmcp.Logx;
 import dev.posedmcp.state.EventStore;
+import dev.posedmcp.state.HookRecordStore;
 import dev.posedmcp.state.SavedHook;
 
 /**
@@ -42,6 +43,7 @@ public final class BridgeServer {
     private final int port;
     private final String token;
     private final EventStore events;
+    private final HookRecordStore hookRecords;
     private final TrustDecider trustDecider;
     private final PeerListener peerListener;
 
@@ -81,15 +83,12 @@ public final class BridgeServer {
         void onPeerReady(String pkg, String peerKey);
     }
 
-    public BridgeServer(int port, String token, EventStore events, TrustDecider trustDecider) {
-        this(port, token, events, trustDecider, null);
-    }
-
-    public BridgeServer(int port, String token, EventStore events, TrustDecider trustDecider,
-            PeerListener peerListener) {
+    public BridgeServer(int port, String token, EventStore events, HookRecordStore hookRecords,
+            TrustDecider trustDecider, PeerListener peerListener) {
         this.port = port;
         this.token = token;
         this.events = events;
+        this.hookRecords = hookRecords;
         this.trustDecider = trustDecider;
         this.peerListener = peerListener;
     }
@@ -166,13 +165,24 @@ public final class BridgeServer {
     /** Every live process of a package that is serving as a peer. */
     public List<String> appPeerKeys(String pkg) {
         List<String> out = new ArrayList<>();
-        String prefix = Wire.ROLE_APP + ":" + pkg + ":";
+        String prefix = peerKeyPrefix(pkg);
         for (String key : new ArrayList<>(peers.keySet())) {
             if (key.startsWith(prefix) && peer(key) != null) {
                 out.add(key);
             }
         }
         return out;
+    }
+
+    /**
+     * The key every process of a package connects under.
+     *
+     * <p>Needed where the processes themselves are not: a record kept from a
+     * process that has since been killed still says which package it came from,
+     * and there is nothing left to ask.
+     */
+    public static String peerKeyPrefix(String pkg) {
+        return isSystem(pkg) ? Wire.ROLE_SYSTEM : Wire.ROLE_APP + ":" + pkg + ":";
     }
 
     /**
@@ -426,6 +436,18 @@ public final class BridgeServer {
                 String type = event.optString("type", "unknown");
                 long ts = event.optLong("ts", System.currentTimeMillis());
                 JSONObject data = event.optJSONObject("data");
+                if (Wire.HOOK_RECORD_EVENT.equals(type)) {
+                    // Hook records go to their own store rather than the event
+                    // feed. They arrive as fast as the hooked method is called,
+                    // and the feed is a fixed-size window shared with foreground
+                    // and screen transitions - a chatty hook would push those
+                    // out and leave an agent watching events with no idea why.
+                    HookRecordStore records = hookRecords;
+                    if (records != null) {
+                        records.add(peer.key, data);
+                    }
+                    continue;
+                }
                 events.add(peer.key, type, data, ts);
                 continue;
             }
