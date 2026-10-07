@@ -409,8 +409,7 @@ public class MainActivity extends AppCompatActivity {
         statusContent.addView(body(getString(R.string.body_endpoint_localhost, prefs.mcpPort())));
 
         statusContent.addView(section(getString(R.string.section_actions)));
-        LinearLayout serviceRow = row();
-        serviceRow.addView(filledButton(getString(running
+        MaterialButton serviceButton = filledButton(getString(running
                         ? R.string.action_stop_service : R.string.action_start_service), v -> {
             if (McpService.instance() != null && McpService.instance().isRunning()) {
                 McpService.stop(this);
@@ -418,26 +417,28 @@ public class MainActivity extends AppCompatActivity {
                 McpService.start(this);
             }
             statusContent.postDelayed(this::renderStatus, 600L);
-        }));
-        serviceRow.addView(tonalButton(getString(R.string.action_overlay), v -> {
+        });
+        MaterialButton overlayButton = tonalButton(getString(R.string.action_overlay), v -> {
             try {
                 startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:" + getPackageName())));
             } catch (Throwable t) {
                 toast(getString(R.string.toast_overlay_settings_failed));
             }
-        }));
-        serviceRow.addView(tonalButton(getString(R.string.action_battery),
-                v -> openBatterySettings()));
-        serviceRow.addView(tonalButton(getString(R.string.action_accessibility), v -> {
-            try {
-                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
-                toast(getString(R.string.toast_turn_on_in_list));
-            } catch (Throwable t) {
-                toast(getString(R.string.toast_a11y_settings_failed));
-            }
-        }));
-        statusContent.addView(serviceRow);
+        });
+        MaterialButton batteryButton = tonalButton(getString(R.string.action_battery),
+                v -> openBatterySettings());
+        MaterialButton accessibilityButton = tonalButton(getString(R.string.action_accessibility),
+                v -> {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                        toast(getString(R.string.toast_turn_on_in_list));
+                    } catch (Throwable t) {
+                        toast(getString(R.string.toast_a11y_settings_failed));
+                    }
+                });
+        statusContent.addView(buttonGridRow(serviceButton, overlayButton));
+        statusContent.addView(buttonGridRow(batteryButton, accessibilityButton));
 
         statusContent.addView(section(getString(R.string.section_confirmation_policy)));
         statusContent.addView(body(getString(R.string.body_confirmation_policy)));
@@ -1233,6 +1234,34 @@ public class MainActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = dp(12);
         row.setLayoutParams(lp);
+        return row;
+    }
+
+    /**
+     * Two buttons side by side, each taking half the width.
+     *
+     * <p>These were one flat row of four until the accessibility button fell off
+     * the end of it. Buttons are {@code WRAP_CONTENT} wide, the labels are not
+     * short, and one of them changes length with what the service is doing -
+     * nothing in that row had any reason to shrink, so the last one simply went
+     * off screen. Two fixed columns cannot.
+     *
+     * <p>The gap is the left button's own right margin; the right one gives its
+     * margin up so the pair stays flush with everything above it.
+     */
+    private LinearLayout buttonGridRow(View left, View right) {
+        LinearLayout row = row();
+        LinearLayout.LayoutParams leftParams =
+                (LinearLayout.LayoutParams) left.getLayoutParams();
+        leftParams.width = 0;
+        leftParams.weight = 1f;
+        LinearLayout.LayoutParams rightParams =
+                (LinearLayout.LayoutParams) right.getLayoutParams();
+        rightParams.width = 0;
+        rightParams.weight = 1f;
+        rightParams.rightMargin = 0;
+        row.addView(left);
+        row.addView(right);
         return row;
     }
 
