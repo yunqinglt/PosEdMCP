@@ -229,6 +229,119 @@ public final class ProbeSnapshot {
     }
 
     /**
+     * Known ad/analytics SDK shared objects. Java-side names get obfuscated;
+     * the .so a library ships never does, so matching against what the app
+     * has mapped resolves the names the model would otherwise guess at.
+     */
+    private static final String[][] KNOWN_SOS = {
+            {"libbykv", "ByteDance Pangle ad SDK"},
+            {"libtt_ugen", "ByteDance audio SDK"},
+            {"libttoboe", "ByteDance audio SDK"},
+            {"libwind", "Sigmob ad SDK"},
+            {"libgdtqjs", "Tencent GDT ad SDK"},
+            {"libksad", "Kuaishou ad SDK"},
+            {"libksadsdk", "Kuaishou ad SDK"},
+            {"libmsaoaidsec", "MSA OAID security SDK"},
+            {"libumeng", "Umeng analytics SDK"},
+            {"libtalkingdata", "TalkingData analytics SDK"},
+            {"libjcore", "JPush SDK"},
+            {"libnmsp_speex", "iFlytek speech SDK"},
+            {"libmsc", "iFlytek speech SDK"},
+    };
+
+    /**
+     * The shared objects the process has mapped, deduplicated. This is the
+     * one fingerprint ad SDKs cannot obfuscate away, and it costs a single
+     * root read of /proc/pid/maps.
+     */
+    public static JSONArray libraries(int pid) {
+        try {
+            RootShell.Result r = RootShell.exec(
+                    "grep -oE '/[^ ]+\\.so' /proc/" + pid + "/maps 2>/dev/null | sort -u",
+                    8_000L);
+            if (!r.ok()) {
+                return null;
+            }
+            JSONArray out = new JSONArray();
+            for (String line : r.stdout.split("\n")) {
+                String path = line.trim();
+                if (path.isEmpty()) {
+                    continue;
+                }
+                out.put(path);
+                if (out.length() >= 200) {
+                    break;
+                }
+            }
+            return out;
+        } catch (Throwable t) {
+            Logx.w("probe: library scan failed: " + t);
+            return null;
+        }
+    }
+
+    /** Which of the known SDK shared objects appear in the library list. */
+    public static JSONArray sdkHints(JSONArray libraries) {
+        JSONArray out = new JSONArray();
+        if (libraries == null) {
+            return out;
+        }
+        try {
+            for (int i = 0; i < libraries.length(); i++) {
+                String path = libraries.optString(i, "");
+                String base = path.substring(path.lastIndexOf('/') + 1).toLowerCase(java.util.Locale.ROOT);
+                for (String[] known : KNOWN_SOS) {
+                    if (base.startsWith(known[0])) {
+                        JSONObject hint = new JSONObject();
+                        hint.put("library", base);
+                        hint.put("sdk", known[1]);
+                        out.put(hint);
+                        break;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return out;
+    }
+
+    /**
+     * Marks each thread with the foreign package its frames run through most
+     * - the answer to "which threads belong to the SDK", computed here rather
+     * than left for the model to count frame by frame.
+     */
+    public static void annotateThreads(String pkg, JSONArray threads) {
+        if (threads == null) {
+            return;
+        }
+        for (int i = 0; i < threads.length(); i++) {
+            JSONObject thread = threads.optJSONObject(i);
+            JSONArray stack = thread == null ? null : thread.optJSONArray("stack");
+            if (stack == null || stack.length() == 0) {
+                continue;
+            }
+            Map<String, int[]> counts = new LinkedHashMap<>();
+            for (int j = 0; j < stack.length(); j++) {
+                countForeign(counts, pkg, stack.optString(j, ""));
+            }
+            String top = null;
+            int best = 0;
+            for (Map.Entry<String, int[]> entry : counts.entrySet()) {
+                if (entry.getValue()[0] > best) {
+                    best = entry.getValue()[0];
+                    top = entry.getKey();
+                }
+            }
+            if (top != null) {
+                try {
+                    thread.put("topForeign", top);
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+    }
+
+    /**
      * Which non-platform, non-app packages own the most frames, counted over
      * either stack source - the in-process snapshot and the ANR trace share
      * one frame format, so both flow through the same counter.

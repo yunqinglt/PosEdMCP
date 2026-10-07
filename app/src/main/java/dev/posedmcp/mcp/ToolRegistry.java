@@ -1245,7 +1245,9 @@ public final class ToolRegistry {
                 .title("Read the frozen probe target")
                 .description("The app the user has frozen with the floating probe button, and the"
                         + " evidence captured at the moment it froze: every thread with its Java"
-                        + " stack, plus which packages outside the app own the most frames."
+                        + " stack, which packages outside the app own the most frames (and which"
+                        + " thread each one runs on), the shared libraries the app has mapped"
+                        + " with any known ad/analytics SDKs among them, and the view tree."
                         + " Read-only."
                         + "\n\nA freeze is the only way a transient screen can be inspected"
                         + " without racing it: the user presses the button and the scene stays"
@@ -1318,6 +1320,10 @@ public final class ToolRegistry {
                         if (snapshot.has("ui")) {
                             out.put("ui", snapshot.optJSONObject("ui"));
                         }
+                        if (snapshot.has("libraries")) {
+                            out.put("libraries", snapshot.optJSONArray("libraries"));
+                            out.put("sdkHints", snapshot.optJSONArray("sdkHints"));
+                        }
                     }
 
                     JSONArray notes = new JSONArray();
@@ -1328,6 +1334,14 @@ public final class ToolRegistry {
                     if (snapshot != null && snapshot.has("ui")) {
                         notes.put("ui is the view tree captured just before the freeze - a frozen"
                                 + " app answers no tool, so this is the only copy of it.");
+                    }
+                    if (snapshot != null && snapshot.optJSONArray("sdkHints") != null
+                            && snapshot.optJSONArray("sdkHints").length() > 0) {
+                        notes.put("sdkHints names the ad/analytics SDKs found among the loaded"
+                                + " shared objects - the .so files survive the obfuscation their"
+                                + " Java does not, so these stay reliable even where the frame"
+                                + " names are junk. Threads marked topForeign run through that"
+                                + " package's code.");
                     }
                     if (snapshot != null && snapshot.has("captureError")) {
                         notes.put("The Java stacks could not be captured: "

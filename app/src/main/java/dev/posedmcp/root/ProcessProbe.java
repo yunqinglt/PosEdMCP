@@ -228,6 +228,22 @@ public final class ProcessProbe {
                             ProbeSnapshot.foreignPackages(pkg, snapshot.optJSONArray("threads")));
                 } catch (Throwable ignored) {
                 }
+                try {
+                    ProbeSnapshot.annotateThreads(pkg, snapshot.optJSONArray("threads"));
+                } catch (Throwable ignored) {
+                }
+                // The mapped shared objects survive obfuscation and cost one
+                // root read; they are worth having even when the stacks are
+                // not, so this runs regardless of how the snapshot fared.
+                try {
+                    JSONArray libs = ProbeSnapshot.libraries(pids[0]);
+                    if (libs != null) {
+                        snapshot.put("libraries", libs);
+                        snapshot.put("sdkHints", ProbeSnapshot.sdkHints(libs));
+                    }
+                } catch (Throwable t) {
+                    Logx.w("probe: library capture failed: " + t);
+                }
             }
 
             // A refused marker write aborts the whole freeze: without the
