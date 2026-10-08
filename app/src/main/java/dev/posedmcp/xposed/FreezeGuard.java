@@ -65,9 +65,24 @@ public final class FreezeGuard {
     }
 
     /**
+     * The input-ANR kill family. One chain, several reason strings: the
+     * system's own auto-kill arrives as "bg anr", the ANR-dialog path as
+     * "user request after error:Input dispatching timed out ...". Matching
+     * only "anr" let the second one through on ColorOS and killed a frozen
+     * Bilibili mid-session - measured, with the exit record to prove it.
+     */
+    private static boolean isAnrFamily(String reason) {
+        String r = reason == null ? "" : reason.toLowerCase(java.util.Locale.ROOT);
+        return r.contains("anr")
+                || r.contains("user request")
+                || r.contains("input dispatch")
+                || r.contains("not responding");
+    }
+
+    /**
      * The ANR kill's execution entry, on every ROM. Skipping it before its
      * side effects leaves AMS consistent - the process stays marked alive,
-     * which is true. Scoped to the guarded uid and to an ANR reason.
+     * which is true. Scoped to the guarded uid and to the ANR family above.
      */
     private static void installAnrKillGuard(ClassLoader loader) {
         try {
@@ -84,7 +99,7 @@ public final class FreezeGuard {
                         public void before(HookApi.HookParam param) {
                             Object reasonArg = param.args()[0];
                             String reason = reasonArg == null ? "" : reasonArg.toString();
-                            if (!reason.toLowerCase().contains("anr")) {
+                            if (!isAnrFamily(reason)) {
                                 return;
                             }
                             try {
