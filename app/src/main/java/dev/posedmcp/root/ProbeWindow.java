@@ -70,10 +70,16 @@ public final class ProbeWindow {
 
     private static View frozenRoot;
     private static TextView frozenText;
+    private static RippleView shieldRipple;
+    private static View shieldPillView;
 
     private static View frozenPill;
     private static WindowManager.LayoutParams frozenPillLp;
     private static TextView frozenPillText;
+    private static RippleView tempRipple;
+
+    /** Where the user last tapped the pill, in raw screen coordinates. */
+    private static float lastTapRawX, lastTapRawY;
 
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static final ExecutorService OPS = Executors.newSingleThreadExecutor(r -> {
@@ -188,10 +194,20 @@ public final class ProbeWindow {
         } catch (Throwable t) {
             Logx.w("probe: pill remove failed: " + t);
         }
+        try {
+            if (tempRipple != null) {
+                wm.removeViewImmediate(tempRipple);
+            }
+        } catch (Throwable t) {
+            Logx.w("probe: ripple remove failed: " + t);
+        }
         frozenRoot = null;
         frozenText = null;
+        shieldRipple = null;
+        shieldPillView = null;
         frozenPill = null;
         frozenPillText = null;
+        tempRipple = null;
         idlePill = null;
     }
 
@@ -330,12 +346,19 @@ public final class ProbeWindow {
         root.addView(shield, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
+        // The freeze ripple, under everything else and started only when a
+        // tap actually froze something.
+        shieldRipple = new RippleView(themed);
+        root.addView(shieldRipple, 0, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+
         MaterialCardView pill = new MaterialCardView(themed);
         pill.setRadius(dp(18));
         pill.setCardElevation(dp(4));
         pill.setClickable(true);
         pill.setCardBackgroundColor(MaterialColors.getColor(pill,
                 com.google.android.material.R.attr.colorErrorContainer));
+        shieldPillView = pill;
         frozenText = new TextView(themed);
         frozenText.setTextAppearance(com.google.android.material.R.style
                 .TextAppearance_Material3_LabelLarge);
@@ -472,6 +495,7 @@ public final class ProbeWindow {
                 main.post(() -> {
                     uiExpiresAt = state.expiresAt;
                     setFrozenTexts(state.expiresAt);
+                    playFreezeRipple();
                 });
             } catch (Throwable t) {
                 main.post(() -> switchToIdle());
@@ -500,8 +524,71 @@ public final class ProbeWindow {
                 toast(appCtx.getString(R.string.toast_probe_freeze_failed,
                         t.getMessage() == null ? "" : t.getMessage()));
             }
-            main.post(() -> switchToIdle());
+            main.post(() -> playUnfreezeRipple());
         });
+    }
+
+    // ---- ripples ------------------------------------------------------------
+
+    /** The wave from the tap outward, played once the freeze actually holds. */
+    private static void playFreezeRipple() {
+        if (!uiShield || frozenRoot == null || shieldRipple == null) {
+            return;
+        }
+        int w = appCtx.getResources().getDisplayMetrics().widthPixels;
+        int h = appCtx.getResources().getDisplayMetrics().heightPixels;
+        shieldRipple.startExpand(lastTapRawX, lastTapRawY, (float) Math.hypot(w, h), 620L);
+    }
+
+    /**
+     * The wave from the screen edge back into the pill. In shield mode it
+     * runs inside the shield; in pill mode it gets its own window, flagged
+     * not-touchable so the closing wave never blocks a tap.
+     */
+    private static void playUnfreezeRipple() {
+        int w = appCtx.getResources().getDisplayMetrics().widthPixels;
+        int h = appCtx.getResources().getDisplayMetrics().heightPixels;
+        float diag = (float) Math.hypot(w, h);
+        if (uiShield && frozenRoot != null && shieldRipple != null && shieldPillView != null) {
+            FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) shieldPillView.getLayoutParams();
+            float cx = lp.leftMargin + shieldPillView.getWidth() / 2f;
+            float cy = lp.topMargin + shieldPillView.getHeight() / 2f;
+            shieldRipple.startContract(cx, cy, diag, 520L);
+            main.postDelayed(() -> switchToIdle(), 560L);
+        } else if (!uiShield && frozenPill != null && frozenPillLp != null) {
+            float cx = frozenPillLp.x + frozenPill.getWidth() / 2f;
+            float cy = frozenPillLp.y + frozenPill.getHeight() / 2f;
+            attachRippleWindow(cx, cy, diag);
+        } else {
+            switchToIdle();
+        }
+    }
+
+    private static void attachRippleWindow(float cx, float cy, float diag) {
+        Context themed = new ContextThemeWrapper(appCtx, R.style.Theme_PosEdMCP);
+        RippleView ripple = new RippleView(themed);
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT);
+        wm.addView(ripple, lp);
+        tempRipple = ripple;
+        ripple.startContract(cx, cy, diag, 520L);
+        main.postDelayed(() -> {
+            if (tempRipple == ripple) {
+                tempRipple = null;
+                try {
+                    wm.removeViewImmediate(ripple);
+                } catch (Throwable t) {
+                    Logx.w("probe: ripple window remove failed: " + t);
+                }
+            }
+            switchToIdle();
+        }, 560L);
     }
 
     /**
@@ -611,6 +698,8 @@ public final class ProbeWindow {
                 }
                 case MotionEvent.ACTION_UP:
                     if (!moved) {
+                        lastTapRawX = e.getRawX();
+                        lastTapRawY = e.getRawY();
                         v.performClick();
                     }
                     return true;
