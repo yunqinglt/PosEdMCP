@@ -65,24 +65,29 @@ public final class FreezeGuard {
     }
 
     /**
-     * The input-ANR kill family. One chain, several reason strings: the
-     * system's own auto-kill arrives as "bg anr", the ANR-dialog path as
-     * "user request after error:Input dispatching timed out ...". Matching
-     * only "anr" let the second one through on ColorOS and killed a frozen
-     * Bilibili mid-session - measured, with the exit record to prove it.
+     * The kill families a deliberate freeze attracts. One chain, several
+     * reason strings: the input-ANR family ("bg anr", "user request after
+     * error:Input dispatching timed out ..."), and the CachedAppOptimizer's
+     * - measured on the OnePlus, a frozen app backgrounded for a minute or
+     * two dies as "excessive binder traffic during cached": the system's own
+     * calls to the frozen app pile up and time out, the traffic crosses the
+     * optimizer's threshold, and AMS kills it. Matching only the ANR family
+     * let that one through.
      */
-    private static boolean isAnrFamily(String reason) {
+    private static boolean isGuardedKillFamily(String reason) {
         String r = reason == null ? "" : reason.toLowerCase(java.util.Locale.ROOT);
         return r.contains("anr")
                 || r.contains("user request")
                 || r.contains("input dispatch")
-                || r.contains("not responding");
+                || r.contains("not responding")
+                || r.contains("excessive binder")
+                || r.contains("excessive cpu");
     }
 
     /**
-     * The ANR kill's execution entry, on every ROM. Skipping it before its
+     * The kill's execution entry, on every ROM. Skipping it before its
      * side effects leaves AMS consistent - the process stays marked alive,
-     * which is true. Scoped to the guarded uid and to the ANR family above.
+     * which is true. Scoped to the guarded uid and to the families above.
      */
     private static void installAnrKillGuard(ClassLoader loader) {
         try {
@@ -99,7 +104,7 @@ public final class FreezeGuard {
                         public void before(HookApi.HookParam param) {
                             Object reasonArg = param.args()[0];
                             String reason = reasonArg == null ? "" : reasonArg.toString();
-                            if (!isAnrFamily(reason)) {
+                            if (!isGuardedKillFamily(reason)) {
                                 return;
                             }
                             try {
