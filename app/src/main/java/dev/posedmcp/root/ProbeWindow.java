@@ -21,27 +21,29 @@ import com.google.android.material.color.MaterialColors;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import dev.posedmcp.Logx;
 import dev.posedmcp.McpService;
 import dev.posedmcp.R;
+import dev.posedmcp.a11y.AccessibilityBridge;
 import dev.posedmcp.state.Prefs;
 
 /**
  * The floating button that freezes the app in front.
  *
- * <p>Two windows, never more than one on screen at a time, and the reason is a
- * measured failure. The first version was a single full-screen window whose
- * only touchable child was the pill, on the assumption that NOT_TOUCH_MODAL
- * limits a window's touch handling to its views' touchable region. It does
- * not: a full-screen overlay window ate every tap on the screen, its own
- * dialogs' buttons included. So the idle state is a window no bigger than the
- * pill - outside its bounds, NOT_TOUCH_MODAL hands every touch to whatever is
- * underneath. The frozen state is the exact opposite: a full-screen shield
- * that eats everything, because a frozen app that the user taps cannot answer
- * the input dispatcher, and a few seconds of that is how it earns an ANR
- * dialog over the exact screen the freeze was meant to preserve. The shield
- * carries its own countdown pill, so the two windows never need to stack.
+ * <p>Three windows, at most one on screen, and the reason is a pair of
+ * measured failures. A single full-screen window with NOT_TOUCH_MODAL ate
+ * every tap on the phone, so the idle state is a window no bigger than the
+ * pill. The frozen state was a full-screen shield that ate everything -
+ * including the launcher, which left the user unable to open another app
+ * while a freeze was running. So the frozen state now splits: the shield,
+ * which exists to keep taps off a frozen app that cannot answer the input
+ * dispatcher, is up only while the frozen target is actually in front; the
+ * moment the foreground changes, the shield drops to a small countdown pill
+ * that every other app can be used around. The ticker watches the
+ * foreground and switches between the two.
  *
  * <p>The button is the only way a freeze ever starts - nothing here or
  * anywhere else lets the agent do it.
@@ -49,6 +51,7 @@ import dev.posedmcp.state.Prefs;
 public final class ProbeWindow {
 
     private static final int TICK_MS = 500;
+    private static final int FOREGROUND_CHECK_TICKS = 4;
     private static final int PILL_MARGIN_DP = 12;
     private static final int PILL_TOP_DP = 60;
     private static final int DRAG_SLOP_DP = 8;
@@ -57,13 +60,20 @@ public final class ProbeWindow {
     private static WindowManager wm;
     private static boolean attached;
     private static boolean uiFrozen;
+    private static boolean uiShield;
     private static long uiExpiresAt;
+    private static String frozenPkg;
+    private static int tickCount;
 
     private static View idlePill;
     private static WindowManager.LayoutParams idleLp;
 
     private static View frozenRoot;
     private static TextView frozenText;
+
+    private static View frozenPill;
+    private static WindowManager.LayoutParams frozenPillLp;
+    private static TextView frozenPillText;
 
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static final ExecutorService OPS = Executors.newSingleThreadExecutor(r -> {
@@ -86,7 +96,19 @@ public final class ProbeWindow {
                 OPS.submit(() -> ProcessProbe.current(appCtx));
                 return;
             }
-            frozenText.setText(appCtx.getString(R.string.probe_pill_resume, mmss(left)));
+            String text = appCtx.getString(R.string.probe_pill_resume, mmss(left));
+            if (frozenText != null) {
+                frozenText.setText(text);
+            }
+            if (frozenPillText != null) {
+                frozenPillText.setText(text);
+            }
+            // The shield must not outlive the target's foreground: a frozen
+            // app the user has left is no longer under their fingers, and the
+            // launcher has to stay usable. Checked every ~2 seconds.
+            if (++tickCount % FOREGROUND_CHECK_TICKS == 0) {
+                switchModeIfNeeded();
+            }
             main.postDelayed(this, TICK_MS);
         }
     };
@@ -132,6 +154,8 @@ public final class ProbeWindow {
         }
         attached = false;
         uiFrozen = false;
+        uiShield = false;
+        frozenPkg = null;
         OPS.submit(() -> {
             try {
                 ProcessProbe.resume(appCtx);
@@ -139,9 +163,7 @@ public final class ProbeWindow {
                 Logx.w("probe: resume on dismiss failed: " + t);
             }
         });
-        main.post(() -> {
-            removeWindows();
-        });
+        main.post(() -> removeWindows());
     }
 
     private static void removeWindows() {
@@ -153,6 +175,13 @@ public final class ProbeWindow {
             Logx.w("probe: shield remove failed: " + t);
         }
         try {
+            if (frozenPill != null) {
+                wm.removeViewImmediate(frozenPill);
+            }
+        } catch (Throwable t) {
+            Logx.w("probe: frozen pill remove failed: " + t);
+        }
+        try {
             if (idlePill != null) {
                 wm.removeViewImmediate(idlePill);
             }
@@ -160,6 +189,9 @@ public final class ProbeWindow {
             Logx.w("probe: pill remove failed: " + t);
         }
         frozenRoot = null;
+        frozenText = null;
+        frozenPill = null;
+        frozenPillText = null;
         idlePill = null;
     }
 
@@ -167,6 +199,7 @@ public final class ProbeWindow {
     private static void syncWithState(Context ctx) {
         ProcessProbe.State state = ProcessProbe.current(ctx);
         if (state != null) {
+            frozenPkg = state.pkg;
             switchToFrozen(state.expiresAt);
         } else {
             switchToIdle();
@@ -177,6 +210,9 @@ public final class ProbeWindow {
 
     private static void switchToIdle() {
         uiFrozen = false;
+        uiShield = false;
+        frozenPkg = null;
+        tickCount = 0;
         main.removeCallbacks(ticker);
         removeWindows();
         attachIdle();
@@ -196,9 +232,9 @@ public final class ProbeWindow {
         text.setText(R.string.probe_pill_freeze);
         text.setPadding(dp(14), dp(10), dp(14), dp(10));
         pill.addView(text);
-        pill.setOnTouchListener(new DragOrTap());
-        pill.setOnClickListener(v -> onPillTap());
         idlePill = pill;
+        pill.setOnTouchListener(new DragWindow(() -> idleLp, p -> idleLp = p));
+        pill.setOnClickListener(v -> onPillTap());
 
         idleLp = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -209,7 +245,7 @@ public final class ProbeWindow {
                 PixelFormat.TRANSLUCENT);
         idleLp.gravity = Gravity.TOP | Gravity.START;
         int screenW = appCtx.getResources().getDisplayMetrics().widthPixels;
-        idleLp.x = screenW - dp(140);   // a guess the post below corrects
+        idleLp.x = screenW - dp(140);
         idleLp.y = dp(PILL_TOP_DP);
 
         wm.addView(pill, idleLp);
@@ -225,16 +261,63 @@ public final class ProbeWindow {
         });
     }
 
-    // ---- frozen overlay -----------------------------------------------------
+    // ---- frozen state -------------------------------------------------------
 
+    /**
+     * Enters the frozen UI: the full-screen shield while the frozen target is
+     * in front, the small countdown pill once it is not.
+     */
     private static void switchToFrozen(long expiresAt) {
         uiFrozen = true;
         uiExpiresAt = expiresAt;
+        tickCount = 0;
         main.removeCallbacks(ticker);
         removeWindows();
-        attachFrozen(expiresAt);
-        Logx.i("probe window: frozen overlay attached");
+        if (frozenTargetForeground()) {
+            uiShield = true;
+            attachFrozen(expiresAt);
+        } else {
+            uiShield = false;
+            attachFrozenPill(expiresAt);
+        }
         main.post(ticker);
+    }
+
+    /**
+     * Follows the foreground: the shield exists only to keep taps off a frozen
+     * app that is under them. Once the user has left it, the shield has
+     * nothing to protect and everything to block - the launcher above all.
+     */
+    private static void switchModeIfNeeded() {
+        if (!uiFrozen) {
+            return;
+        }
+        boolean foreground = frozenTargetForeground();
+        if (foreground == uiShield) {
+            return;
+        }
+        uiShield = foreground;
+        removeWindows();
+        if (foreground) {
+            attachFrozen(uiExpiresAt);
+            Logx.i("probe window: target back in front, shield restored");
+        } else {
+            attachFrozenPill(uiExpiresAt);
+            Logx.i("probe window: target left the foreground, shield dropped");
+        }
+    }
+
+    /** The frozen target is the window in front, per accessibility first. */
+    private static boolean frozenTargetForeground() {
+        String pkg = frozenPkg;
+        if (pkg == null) {
+            return false;
+        }
+        String window = AccessibilityBridge.lastWindowPackage();
+        if (window == null || window.isEmpty()) {
+            window = foregroundPackage();
+        }
+        return pkg.equals(window);
     }
 
     private static void attachFrozen(long expiresAt) {
@@ -267,8 +350,6 @@ public final class ProbeWindow {
                 Gravity.TOP | Gravity.START);
         root.addView(pill, pillLp);
 
-        // Park it at the top right, once its real width is known - the same
-        // place the idle pill lives, so the two states do not jump around.
         pill.post(() -> {
             if (frozenRoot == null) {
                 return;
@@ -290,13 +371,76 @@ public final class ProbeWindow {
                 PixelFormat.TRANSLUCENT);
         wm.addView(root, lp);
         attached = true;
-        setFrozenText(expiresAt);
+        setFrozenTexts(expiresAt);
     }
 
-    private static void setFrozenText(long expiresAt) {
+    /**
+     * The small frozen pill: the same countdown and resume, in a window no
+     * bigger than itself, so every other app stays usable around it.
+     */
+    private static void attachFrozenPill(long expiresAt) {
+        Context themed = new ContextThemeWrapper(appCtx, R.style.Theme_PosEdMCP);
+
+        MaterialCardView pill = new MaterialCardView(themed);
+        pill.setRadius(dp(18));
+        pill.setCardElevation(dp(4));
+        pill.setClickable(true);
+        pill.setCardBackgroundColor(MaterialColors.getColor(pill,
+                com.google.android.material.R.attr.colorErrorContainer));
+        frozenPillText = new TextView(themed);
+        frozenPillText.setTextAppearance(com.google.android.material.R.style
+                .TextAppearance_Material3_LabelLarge);
+        frozenPillText.setTextColor(MaterialColors.getColor(pill,
+                com.google.android.material.R.attr.colorOnErrorContainer));
+        frozenPillText.setPadding(dp(14), dp(10), dp(14), dp(10));
+        pill.addView(frozenPillText);
+        frozenPill = pill;
+        pill.setOnTouchListener(new DragWindow(() -> frozenPillLp, p -> frozenPillLp = p));
+        pill.setOnClickListener(v -> resumeNow());
+
+        frozenPillLp = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT);
+        frozenPillLp.gravity = Gravity.TOP | Gravity.START;
+        // Where the user left the idle pill, so the freeze does not move the
+        // button they just pressed.
+        if (idleLp != null) {
+            frozenPillLp.x = idleLp.x;
+            frozenPillLp.y = idleLp.y;
+        } else {
+            int screenW = appCtx.getResources().getDisplayMetrics().widthPixels;
+            frozenPillLp.x = screenW - dp(140);
+            frozenPillLp.y = dp(PILL_TOP_DP);
+        }
+
+        wm.addView(pill, frozenPillLp);
+        attached = true;
+
+        pill.post(() -> {
+            if (frozenPill == null) {
+                return;
+            }
+            if (idleLp == null) {
+                frozenPillLp.x = appCtx.getResources().getDisplayMetrics().widthPixels
+                        - pill.getWidth() - dp(PILL_MARGIN_DP);
+                wm.updateViewLayout(pill, frozenPillLp);
+            }
+        });
+        setFrozenTexts(expiresAt);
+    }
+
+    private static void setFrozenTexts(long expiresAt) {
+        String text = appCtx.getString(R.string.probe_pill_resume,
+                mmss(Math.max(0L, expiresAt - System.currentTimeMillis())));
         if (frozenText != null) {
-            frozenText.setText(appCtx.getString(R.string.probe_pill_resume,
-                    mmss(Math.max(0L, expiresAt - System.currentTimeMillis()))));
+            frozenText.setText(text);
+        }
+        if (frozenPillText != null) {
+            frozenPillText.setText(text);
         }
     }
 
@@ -320,13 +464,14 @@ public final class ProbeWindow {
             long durationMs = Prefs.of(appCtx).probeFreezeSeconds() * 1000L;
             // Optimistic: the shield goes up before the freeze lands, so no
             // tap can reach the app in the moment between deciding and doing.
+            frozenPkg = pkg;
             long expiresAt = System.currentTimeMillis() + durationMs;
             main.post(() -> switchToFrozen(expiresAt));
             try {
                 ProcessProbe.State state = ProcessProbe.freeze(appCtx, pkg, durationMs);
                 main.post(() -> {
                     uiExpiresAt = state.expiresAt;
-                    setFrozenText(state.expiresAt);
+                    setFrozenTexts(state.expiresAt);
                 });
             } catch (Throwable t) {
                 main.post(() -> switchToIdle());
@@ -412,18 +557,33 @@ public final class ProbeWindow {
         });
     }
 
-    /** Drags the pill; a touch that never moves is a tap. */
-    private static final class DragOrTap implements View.OnTouchListener {
+    /**
+     * Drags a pill window by its WindowManager.LayoutParams; a touch that
+     * never moves is a tap.
+     */
+    private static final class DragWindow implements View.OnTouchListener {
+        private final Supplier<WindowManager.LayoutParams> get;
+        private final Consumer<WindowManager.LayoutParams> set;
         private final float[] down = new float[2];
         private final int[] last = new int[2];
         private boolean moved;
+
+        DragWindow(Supplier<WindowManager.LayoutParams> get,
+                Consumer<WindowManager.LayoutParams> set) {
+            this.get = get;
+            this.set = set;
+        }
 
         @Override
         public boolean onTouch(View v, MotionEvent e) {
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN: {
-                    last[0] = idleLp.x;
-                    last[1] = idleLp.y;
+                    WindowManager.LayoutParams p = get.get();
+                    if (p == null) {
+                        return true;
+                    }
+                    last[0] = p.x;
+                    last[1] = p.y;
                     down[0] = e.getRawX();
                     down[1] = e.getRawY();
                     moved = false;
@@ -438,9 +598,14 @@ public final class ProbeWindow {
                     if (moved) {
                         int screenW = appCtx.getResources().getDisplayMetrics().widthPixels;
                         int screenH = appCtx.getResources().getDisplayMetrics().heightPixels;
-                        idleLp.x = clamp(last[0] + (int) dx, 0, screenW - v.getWidth());
-                        idleLp.y = clamp(last[1] + (int) dy, 0, screenH - v.getHeight());
-                        wm.updateViewLayout(v, idleLp);
+                        WindowManager.LayoutParams p = get.get();
+                        if (p == null) {
+                            return true;
+                        }
+                        p.x = clamp(last[0] + (int) dx, 0, screenW - v.getWidth());
+                        p.y = clamp(last[1] + (int) dy, 0, screenH - v.getHeight());
+                        set.accept(p);
+                        wm.updateViewLayout(v, p);
                     }
                     return true;
                 }
@@ -460,9 +625,8 @@ public final class ProbeWindow {
     }
 
     /**
-     * Drags the frozen-state pill, which lives inside the full-screen shield
-     * window and therefore moves by its layout margins rather than window
-     * coordinates. A touch that never moves is a tap, which resumes.
+     * Drags the shield's embedded pill, which moves by its layout margins
+     * inside the full-screen window. A touch that never moves resumes.
      */
     private static final class DragFrozenPill implements View.OnTouchListener {
         private final float[] down = new float[2];

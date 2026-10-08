@@ -64,6 +64,7 @@ public class PosEdAccessibilityService extends AccessibilityService {
                 return;
             }
             lastPackage = current;
+            AccessibilityBridge.noteWindow(current);
             JSONObject data = AccessibilityBridge.describeEvent(event);
             data.put("previous", lastPackage == null ? "" : lastPackage);
             AccessibilityBridge.publish("a11y.window", data);

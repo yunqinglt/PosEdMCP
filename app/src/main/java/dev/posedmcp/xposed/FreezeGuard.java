@@ -44,15 +44,69 @@ public final class FreezeGuard {
         }
     }
 
-    /** Installs the hooks once, from system_server, only on ColorOS. */
+    /**
+     * Installs the hooks once, from system_server. The ANR kill guard is
+     * generic Android and installs on every ROM; the HANS unfreeze guards are
+     * ColorOS-only. Every hook degrades on its own: one that cannot install
+     * logs the fact and the rest still stand - the guard is an enhancement
+     * over the freeze, never a precondition of it.
+     */
     public static synchronized void install(ClassLoader loader) {
         if (installed) {
             return;
         }
-        if (!isColorOS(loader)) {
-            Logx.i("freeze guard: not ColorOS, not installed");
-            return;
+        installed = true;
+        installAnrKillGuard(loader);
+        if (isColorOS(loader)) {
+            installHansGuards(loader);
+        } else {
+            Logx.i("freeze guard: not ColorOS; the ANR kill guard alone is installed");
         }
+    }
+
+    /**
+     * The ANR kill's execution entry, on every ROM. Skipping it before its
+     * side effects leaves AMS consistent - the process stays marked alive,
+     * which is true. Scoped to the guarded uid and to an ANR reason.
+     */
+    private static void installAnrKillGuard(ClassLoader loader) {
+        try {
+            if (Class.forName("com.android.server.am.ProcessRecord", false, loader) == null) {
+                Logx.w("freeze guard: ProcessRecord not resolvable; no ANR kill guard");
+                return;
+            }
+            HookApi api = Framework.hookApi(loader);
+            api.hookMethod("com.android.server.am.ProcessRecord", "killLocked",
+                    new Class<?>[]{String.class, String.class, int.class, int.class,
+                            boolean.class, boolean.class},
+                    new HookApi.Callback() {
+                        @Override
+                        public void before(HookApi.HookParam param) {
+                            Object reasonArg = param.args()[0];
+                            String reason = reasonArg == null ? "" : reasonArg.toString();
+                            if (!reason.toLowerCase().contains("anr")) {
+                                return;
+                            }
+                            try {
+                                Object u = param.getObjectField("uid");
+                                if (u instanceof Integer && guards((Integer) u)) {
+                                    Logx.i("freeze guard: blocked anr kill of uid " + u
+                                            + " (" + reason + ")");
+                                    param.setResult(null);
+                                }
+                            } catch (Throwable t) {
+                                Logx.w("freeze guard: could not read the kill's uid: " + t);
+                            }
+                        }
+                    });
+            Logx.i("freeze guard: ANR kill guard installed");
+        } catch (Throwable t) {
+            Logx.e("freeze guard: ANR kill guard unavailable: " + t);
+        }
+    }
+
+    /** The HANS unfreeze guards. ColorOS only - HANS exists nowhere else. */
+    private static void installHansGuards(ClassLoader loader) {
         try {
             HookApi api = Framework.hookApi(loader);
 
@@ -87,37 +141,9 @@ public final class FreezeGuard {
                         }
                     });
 
-            // The ANR kill's execution entry. Skipping it before its side
-            // effects leaves AMS consistent - the process stays marked alive,
-            // which is true. Scoped to the guarded uid and to an ANR reason.
-            api.hookMethod("com.android.server.am.ProcessRecord", "killLocked",
-                    new Class<?>[]{String.class, String.class, int.class, int.class,
-                            boolean.class, boolean.class},
-                    new HookApi.Callback() {
-                        @Override
-                        public void before(HookApi.HookParam param) {
-                            Object reasonArg = param.args()[0];
-                            String reason = reasonArg == null ? "" : reasonArg.toString();
-                            if (!reason.toLowerCase().contains("anr")) {
-                                return;
-                            }
-                            try {
-                                Object u = param.getObjectField("uid");
-                                if (u instanceof Integer && guards((Integer) u)) {
-                                    Logx.i("freeze guard: blocked anr kill of uid " + u
-                                            + " (" + reason + ")");
-                                    param.setResult(null);
-                                }
-                            } catch (Throwable t) {
-                                Logx.w("freeze guard: could not read the kill's uid: " + t);
-                            }
-                        }
-                    });
-
-            installed = true;
-            Logx.i("freeze guard: installed");
+            Logx.i("freeze guard: HANS guards installed");
         } catch (Throwable t) {
-            Logx.e("freeze guard: install failed", t);
+            Logx.e("freeze guard: HANS guards unavailable: " + t);
         }
     }
 

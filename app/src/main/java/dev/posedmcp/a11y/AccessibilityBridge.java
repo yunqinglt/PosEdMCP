@@ -49,6 +49,8 @@ public final class AccessibilityBridge {
 
     private static volatile AccessibilityService service;
     private static volatile EventSink sink;
+    /** The package of the window most recently reported by the service. */
+    private static volatile String lastWindowPackage;
 
     private AccessibilityBridge() {
     }
@@ -61,6 +63,16 @@ public final class AccessibilityBridge {
         if (service == instance) {
             service = null;
         }
+    }
+
+    /** Called by the service whenever the foreground window changes package. */
+    static void noteWindow(String pkg) {
+        lastWindowPackage = pkg;
+    }
+
+    /** The package of the foreground window as the service last saw it, or null. */
+    public static String lastWindowPackage() {
+        return lastWindowPackage;
     }
 
     public static void setEventSink(EventSink eventSink) {
