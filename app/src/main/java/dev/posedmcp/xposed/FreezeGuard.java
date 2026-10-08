@@ -156,6 +156,29 @@ public final class FreezeGuard {
                         }
                     });
 
+            // The cgroup write chokepoint: every HANS freeze and unfreeze -
+            // the R/M state machine's cycle, the input dispatcher path, the
+            // F-state - lands here as a write to the uid's cgroup.freeze.
+            // While the uid is guarded, both directions are ignored, so the
+            // ROM's own freeze/unfreeze churn (measured: M enter → try idling
+            // → back to R, every couple of seconds on a target holding audio
+            // focus) can no longer touch the file the probe owns.
+            api.hookMethod("com.android.server.hans.freeze.HansCGroup",
+                    "writeUidToCgroupFile",
+                    new Class<?>[]{int.class, int.class},
+                    new HookApi.Callback() {
+                        @Override
+                        public void before(HookApi.HookParam param) {
+                            Object u = param.args()[0];
+                            Object v = param.args()[1];
+                            if (u instanceof Integer && guards((Integer) u)) {
+                                Logx.i("freeze guard: blocked HANS cgroup write of uid " + u
+                                        + " to " + v);
+                                param.setResult(null);
+                            }
+                        }
+                    });
+
             Logx.i("freeze guard: HANS guards installed");
         } catch (Throwable t) {
             Logx.e("freeze guard: HANS guards unavailable: " + t);
