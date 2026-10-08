@@ -164,11 +164,11 @@ public final class McpService extends Service {
         return pkg.isEmpty() ? null : pkg;
     }
 
-    /** Arms (or, with -1, disarms) the HANS unfreeze guard in system_server. */
-    public void setProbeGuard(int uid) {
+    /** Arms (or, with -1, disarms) the freeze guard in system_server. */
+    public void setProbeGuard(int uid, int pid, long starttime, long leaseMs) {
         Capabilities caps = capabilities;
         if (caps != null) {
-            caps.setProbeGuard(uid);
+            caps.setProbeGuard(uid, pid, starttime, leaseMs);
         }
     }
 

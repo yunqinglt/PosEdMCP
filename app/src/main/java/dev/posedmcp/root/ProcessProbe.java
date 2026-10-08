@@ -313,7 +313,13 @@ public final class ProcessProbe {
         if (ProbeBackend.Kind.CGROUP.name().equalsIgnoreCase(state.backend)) {
             McpService service = McpService.instance();
             if (service != null) {
-                service.setProbeGuard(state.uid);
+                long starttime = -1L;
+                try {
+                    starttime = Long.parseLong(state.starts[0]);
+                } catch (Throwable ignored) {
+                }
+                service.setProbeGuard(state.uid, state.pids[0], starttime,
+                        state.expiresAt - state.frozenAt);
             }
         }
         if (snapshot != null) {
@@ -514,11 +520,11 @@ public final class ProcessProbe {
         return out;
     }
 
-    /** Disarms the HANS unfreeze guard in system_server, best-effort. */
+    /** Disarms the freeze guard in system_server, best-effort. */
     private static void clearGuard() {
         McpService service = McpService.instance();
         if (service != null) {
-            service.setProbeGuard(-1);
+            service.setProbeGuard(-1, -1, -1L, 0L);
         }
     }
 

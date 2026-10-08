@@ -146,18 +146,23 @@ public final class Capabilities {
     }
 
     /**
-     * Arms (or, with -1, disarms) the HANS unfreeze guard in system_server:
-     * while the probe holds a cgroup freeze, the ROM's own freezer manager
-     * must not thaw that uid. Best-effort - the guard protects the freeze,
-     * it is never the freeze itself.
+     * Arms (or, with -1, disarms) the freeze guard in system_server: while
+     * the probe holds a cgroup freeze, the ROM's own freezer manager and its
+     * input ANR path must not thaw or kill that uid. The full identity (pid
+     * and starttime) travels with the uid so the guard can refuse a recycled
+     * pid. Best-effort - the guard protects the freeze, it is never the
+     * freeze itself.
      */
-    public void setProbeGuard(int uid) {
+    public void setProbeGuard(int uid, int pid, long starttime, long leaseMs) {
         try {
             JSONObject args = new JSONObject();
             args.put("uid", uid);
+            args.put("pid", pid);
+            args.put("starttime", starttime);
+            args.put("lease_ms", leaseMs);
             systemCall("probe_guard", args, 3_000L);
         } catch (Throwable t) {
-            Logx.w("probe: could not set the HANS guard: " + t);
+            Logx.w("probe: could not set the freeze guard: " + t);
         }
     }
 

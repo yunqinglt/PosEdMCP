@@ -39,14 +39,6 @@ public final class SystemHooks {
 
     private static final long POLL_INTERVAL_MS = 2000L;
 
-    /** The uid the probe currently holds a cgroup freeze on, or -1. */
-    private static volatile int probeGuardedUid = -1;
-
-    /** Read by the counter-Athena Lua script from inside its HANS hooks. */
-    public static int probeGuardedUid() {
-        return probeGuardedUid;
-    }
-
     private static final SystemOps OPS = new SystemOps();
     private static final AtomicBoolean INSTALLED = new AtomicBoolean(false);
 
@@ -125,16 +117,19 @@ public final class SystemHooks {
                     .put("framework", Framework.describe())
                     .put("hooks", HookRegistry.snapshot().size()));
             bridge.registerHandler("probe_display", args -> OPS.probeDisplay());
-            // The uid the probe currently holds a cgroup freeze on, or -1. The
-            // counter-Athena script reads it (see assets/special/athena.lua):
-            // while a freeze is held, HANS - the cgroup freezer manager on
-            // ColorOS - must not unfreeze that uid, or the probe's freeze is
-            // silently undone by the ROM's own scene engine.
+            // The freeze guard, armed while the probe holds a cgroup freeze.
+            // It protects the frozen uid from HANS's unfreeze intents and from
+            // the input ANR kill; see FreezeGuard.
             bridge.registerHandler("probe_guard", args -> {
-                probeGuardedUid = args.optInt("uid", -1);
-                Logx.i("probe: HANS unfreeze guard "
-                        + (probeGuardedUid > 0 ? "armed for uid " + probeGuardedUid : "cleared"));
-                return new JSONObject().put("guardedUid", probeGuardedUid);
+                int guardedUid = args.optInt("uid", -1);
+                if (guardedUid > 0) {
+                    FreezeGuard.arm(guardedUid, args.optInt("pid", -1),
+                            args.optLong("starttime", -1L),
+                            args.optLong("lease_ms", 60_000L));
+                } else {
+                    FreezeGuard.disarm();
+                }
+                return new JSONObject().put("guardedUid", FreezeGuard.guardedUid());
             });
             // The same hook surface an ordinary app gets, on the process that
             // needed it most. HookRegistry, LuaRuntime and MethodInvoker want
@@ -180,6 +175,9 @@ public final class SystemHooks {
             HookRegistry.setRecordSink(new RecordFeed("posedmcp-hook-feed-system",
                     record -> emit(Wire.HOOK_RECORD_EVENT, record)));
             Logx.i("system hooks installed in system_server");
+            // The freeze guard's hooks, on ColorOS only - the whole point is
+            // HANS, which does not exist elsewhere.
+            FreezeGuard.install(LOADER);
 
             // Screen state comes from broadcasts, which need the system Context.
             // system_server loads its packages very early, long before that
