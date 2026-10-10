@@ -22,6 +22,8 @@
     <queries>
         <package android:name="com.oplus.athena" />
         <package android:name="com.miui.powerkeeper" />
+        <!-- The Deploy companion APK this app binds to over AIDL. -->
+        <package android:name="dev.deploy" />
     </queries>
     <!--
       Without this, the platform freezes the process once the app is no longer

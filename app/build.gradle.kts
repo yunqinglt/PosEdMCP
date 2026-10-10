@@ -114,4 +114,8 @@ dependencies {
     // into every scoped process on the module's own class loader - there is no
     // compile step and no DEX to push for a script.
     implementation("org.luaj:luaj-jse:3.0.1")
+
+    // The AIDL contract Deploy implements and this app binds to, to reach the
+    // ELF analysis backend.
+    implementation(project(":deploy-api"))
 }

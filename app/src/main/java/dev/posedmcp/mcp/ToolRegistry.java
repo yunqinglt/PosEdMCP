@@ -30,6 +30,7 @@ import dev.posedmcp.Logx;
 import dev.posedmcp.a11y.AccessibilityBridge;
 import dev.posedmcp.dex.ApkInfo;
 import dev.posedmcp.dex.DexClient;
+import dev.posedmcp.deploy.DeployClient;
 import dev.posedmcp.ipc.BridgeServer;
 import dev.posedmcp.root.AuditNotifier;
 import dev.posedmcp.root.ConfirmationGate;
@@ -446,6 +447,38 @@ public final class ToolRegistry {
                         call.put("sources", args.optJSONArray("sources"));
                     }
                     return McpTool.json(DexClient.get(context).call("assemble", call, 600_000L));
+                })
+                .build());
+
+        add(McpTool.of("deploy_status")
+                .title("Deploy backend status")
+                .description("Status of the Deploy companion - the native ELF analysis backend"
+                        + " that PosEdMCP reaches over AIDL. Reports whether it is installed and"
+                        + " reachable, its version and backend. Read-only.")
+                .readOnly()
+                .input(new JSONObject())
+                .handler(args -> McpTool.json(DeployClient.get(context).status()))
+                .build());
+
+        add(McpTool.of("deploy_analyze")
+                .title("Analyze an ELF shared object")
+                .description("Parses a .so (ELF) file with the Deploy backend and returns one"
+                        + " layer of it. 'path' is an absolute path Deploy can read - typically"
+                        + " a file already copied to /sdcard, since Deploy is not root. 'op'"
+                        + " selects the layer: overview (header, machine, entry), symbols,"
+                        + " relocations, strings, metadata, or resolve (hook addresses)."
+                        + " Read-only.")
+                .readOnly()
+                .input(props(
+                        "path", McpTool.string("Absolute path to the .so file to parse"),
+                        "op", enumOf("What to extract. Default overview",
+                                "overview", "symbols", "relocations", "strings", "metadata",
+                                "resolve")),
+                        "path")
+                .handler(args -> {
+                    String path = require(args, "path");
+                    String op = args.optString("op", "overview");
+                    return McpTool.json(DeployClient.get(context).analyze(path, op, args));
                 })
                 .build());
 

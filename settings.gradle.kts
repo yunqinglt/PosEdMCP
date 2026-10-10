@@ -25,3 +25,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "posedmcp"
 include(":app")
+include(":deploy")
+include(":deploy-api")

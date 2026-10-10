@@ -4,6 +4,8 @@
 local.properties
 build/
 app/build/
+deploy/build/
+deploy-api/build/
 tools/plugin-demo/build/
 *.iml
 .idea/

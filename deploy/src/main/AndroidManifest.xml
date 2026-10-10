@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The MCP endpoint listens on loopback, and the service posts a notification. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_launcher"
+        android:theme="@android:style/Theme.Material.Light"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".DeployActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          The MCP frontend: the agent talks JSON-RPC to this over loopback, the
+          same way it talks to PosEdMCP. Non-root and read-only, so none of its
+          tools prompt.
+        -->
+        <service
+            android:name=".DeployMcpService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Deploy ELF symbol analysis MCP server" />
+        </service>
+
+        <!--
+          The AIDL frontend: PosEdMCP binds here to reach the same backend the
+          MCP service and the dashboard use. Exported on purpose - this is the
+          module-host interface, and PosEdMCP declares this package in its
+          <queries> so it can see and bind it.
+        -->
+        <service
+            android:name=".DeployAidlService"
+            android:exported="true" />
+    </application>
+</manifest>
