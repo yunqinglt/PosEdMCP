@@ -3,6 +3,12 @@
 
     <!-- The MCP endpoint listens on loopback, and the service posts a notification. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!--
+      "All files access": the backend reads shared objects straight from /sdcard,
+      and on Android 13+ that is the only permission covering arbitrary .so files
+      (the granular media permissions do not). The user grants it once.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

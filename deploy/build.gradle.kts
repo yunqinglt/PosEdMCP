@@ -5,6 +5,7 @@ plugins {
 android {
     namespace = "dev.deploy"
     compileSdk = 36
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "dev.deploy"
@@ -12,6 +13,18 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+
+        // Only the ABI these devices use; LIEF will be statically linked in
+        // here, so there is no reason to carry other architectures.
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
     }
 
     buildTypes {
