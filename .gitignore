@@ -2,6 +2,8 @@
 .gradle-home/
 .tools/
 local.properties
+third_party/*
+!third_party/README.md
 build/
 app/build/
 deploy/build/

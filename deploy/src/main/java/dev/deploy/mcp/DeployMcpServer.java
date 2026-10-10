@@ -253,8 +253,7 @@ public final class DeployMcpServer {
                 + " on disk. It is read-only and non-root: name a file with 'path' that the app"
                 + " can read, typically something already copied to /sdcard. The 'op' argument"
                 + " selects the layer - overview, symbols, relocations, strings, metadata, or"
-                + " resolve. Only overview parses anything real in this build; the rest are"
-                + " reserved interfaces for the LIEF backend.");
+                + " resolve. The disasm op is reserved for the Capstone frontend.");
         return result;
     }
 
@@ -266,10 +265,10 @@ public final class DeployMcpServer {
         JSONObject props = new JSONObject();
         props.put("path", str("Absolute path to the .so file to parse"));
         props.put("op", str("What to extract: overview, symbols, relocations, strings,"
-                + " metadata, resolve. Default overview."));
+                + " metadata, or resolve. Pass max for list limits and name for resolve."));
         array.put(tool("deploy_analyze", "Analyze an ELF shared object",
-                "Parses a .so file and returns the requested layer. Only 'overview' is"
-                + " implemented in this stub backend; the other ops are reserved. Read-only.",
+                "Parses a .so file with the LIEF ELF backend. The disasm op is reserved"
+                + " for the Capstone frontend. Read-only.",
                 props));
         JSONObject result = new JSONObject();
         result.put("tools", array);

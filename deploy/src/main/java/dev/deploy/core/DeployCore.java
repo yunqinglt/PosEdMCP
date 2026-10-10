@@ -15,9 +15,9 @@ import org.json.JSONObject;
  */
 public final class DeployCore {
 
-    public static final String VERSION = "0.1.0";
-    /** {@code "stub"} until LIEF is cross-compiled in, then {@code "lief"}. */
-    public static final String BACKEND = "stub";
+    public static final String VERSION = "0.2.0";
+    /** The native backend is now backed by the LIEF ELF parser. */
+    public static final String BACKEND = "lief";
 
     /** The layers the engine will offer. {@code disasm} is reserved, not listed. */
     private static final String[] OPS = {
@@ -46,10 +46,8 @@ public final class DeployCore {
             ops.put(op);
         }
         o.put("ops", ops);
-        if (BACKEND.equals("stub")) {
-            o.put("note", "stub backend: only 'overview' parses anything real;"
-                    + " the other ops are reserved interfaces");
-        }
+        o.put("note", "LIEF ELF backend: overview, symbols, relocations, strings,"
+                + " metadata and resolve are available; disasm remains reserved");
         return o;
     }
 
