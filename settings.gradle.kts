@@ -27,3 +27,5 @@ rootProject.name = "posedmcp"
 include(":app")
 include(":deploy")
 include(":deploy-api")
+// Optional test app; never packaged into either production APK.
+include(":native-fixture")

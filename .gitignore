@@ -12,6 +12,7 @@ tools/plugin-demo/build/
 *.iml
 .idea/
 *.log
+__pycache__/
 
 # Screenshots are taken on-device and can capture whatever is on screen,
 # including the MCP token shown in this app's own UI. Keep them out of the tree.
@@ -20,6 +21,7 @@ docs/*.png
 # CMake/Ninja output for the native library.
 app/.cxx/
 deploy/.cxx/
+native-fixture/.cxx/
 
 # Release artifacts, built by tools/release.sh. They are outputs, not sources:
 # the APK is reproducible from the tree and the module zip is the module

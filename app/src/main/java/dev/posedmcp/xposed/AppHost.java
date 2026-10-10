@@ -106,6 +106,7 @@ public final class AppHost {
                     args -> invokePlugin(packageName, appClassLoader, args));
             bridge.registerHandler("list_plugins", args -> listPlugins());
             bridge.registerHandler("unload_plugin", args -> unloadPlugin(args));
+            bridge.registerHandler("deploy_load_native", args -> NativeLibraryLoader.load(packageName, args));
             // Runtime observation and alteration: the dynamic half of static
             // analysis. No plugin DEX involved - the module installs the hook
             // directly, so an agent can go from a smali listing to changing what

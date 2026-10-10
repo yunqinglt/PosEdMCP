@@ -253,7 +253,7 @@ public final class DeployMcpServer {
                 + " on disk. It is read-only and non-root: name a file with 'path' that the app"
                 + " can read, typically something already copied to /sdcard. The 'op' argument"
                 + " selects the layer - overview, symbols, relocations, strings, metadata, or"
-                + " resolve. The disasm op is reserved for the Capstone frontend.");
+                + " resolve. disasm returns Capstone instructions; decompile reports unavailable.");
         return result;
     }
 
@@ -262,13 +262,10 @@ public final class DeployMcpServer {
         array.put(tool("deploy_status", "Deploy backend status",
                 "Version, backend, ABI and the implemented ops of the Deploy ELF analysis"
                 + " backend. Read-only.", new JSONObject()));
-        JSONObject props = new JSONObject();
-        props.put("path", str("Absolute path to the .so file to parse"));
-        props.put("op", str("What to extract: overview, symbols, relocations, strings,"
-                + " metadata, or resolve. Pass max for list limits and name for resolve."));
+        JSONObject props = dev.deploy.api.DeployContract.analysisProperties();
         array.put(tool("deploy_analyze", "Analyze an ELF shared object",
-                "Parses a .so file with the LIEF ELF backend. The disasm op is reserved"
-                + " for the Capstone frontend. Read-only.",
+                "LIEF ELF analysis and Capstone disasm; decompile is reserved"
+                + " for a future pseudocode engine. Read-only.",
                 props));
         JSONObject result = new JSONObject();
         result.put("tools", array);
@@ -292,6 +289,7 @@ public final class DeployMcpServer {
         schema.put("type", "object");
         schema.put("properties", props == null ? new JSONObject() : props);
         schema.put("additionalProperties", false);
+        if ("deploy_analyze".equals(name)) schema.put("required", new JSONArray().put("path"));
         o.put("inputSchema", schema);
         return o;
     }
@@ -328,7 +326,7 @@ public final class DeployMcpServer {
         item.put("text", produced.toString(2));
         content.put(item);
         result.put("content", content);
-        result.put("isError", false);
+        result.put("isError", produced.has("error"));
         return result;
     }
 

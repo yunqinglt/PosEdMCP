@@ -38,6 +38,16 @@
 
 ## 逆向分析工具（只读，不弹窗）
 
+- `deploy_status` / `deploy_analyze` — Deploy 的 LIEF/Capstone ELF 分析接口。
+  `op=disasm` 用 `name` 或十六进制 ELF 虚拟地址 `address` 反汇编；地址不包含 ASLR。
+  `op=decompile` 目前明确返回未安装伪代码引擎。Deploy 独立运行时不提供注入工具。
+
+`deploy_load_native` 是另一个**需按插件策略确认**的 PosEdMCP 工具：给出 `package`、
+`module_status` 里的精确 `peer`、Deploy 可读的 `.so` 路径和 `reason`，加载已校验的
+arm64 库到该作用域进程。可选 `entry` 只能是 `int64_t function(void)`。
+构造函数会执行，不调用 `JNI_OnLoad`；运行于目标应用 UID，无 root 回退，进程退出即清。
+若超时或报入口缺失，库可能已经加载，不要据此自动重复执行。
+
 - `apk_info` — 清单：包名、版本、SDK、权限、四大组件、签名指纹。`package` 或 `path` 二选一。
 - `apk_list` — APK 内部文件与大小，用来找 `classes*.dex` 和资源。
 - `dex_classes` — 类与方法/字段签名。**这是第一步**，比通读反汇编便宜得多。

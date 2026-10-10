@@ -556,6 +556,13 @@ The scripts are checked for CR before they ship. A Magisk script with CRLF endin
 
 ## Injecting into the native layer
 
+Deploy now supplies LIEF ELF analysis and Capstone disassembly over standalone
+MCP and AIDL. PosEdMCP's `deploy_load_native` loads a Deploy-validated library
+snapshot into one confirmed scoped app process. See
+[Deploy native analysis and loading](docs/DEPLOY-NATIVE.md) for the contract,
+limits and device smoke test. This is native library loading; persistent native
+hooks remain a separate milestone.
+
 `app.native` pushes code one level further down: the native code inside the target process.
 The module itself runs from inside the target application's process, so the .so files it
 loads live in that process's address space, reaching things Java cannot — the app's own

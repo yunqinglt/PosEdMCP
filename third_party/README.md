@@ -3,7 +3,7 @@
 Deploy's native backend expects these local source trees:
 
 - `LIEF/` — the ELF parser, with its own `third-party/` dependency archives;
-- `capstone/` — reserved for the later `disasm` operation.
+- `capstone/` — instruction decoder for `disasm` (ARM, AArch64, x86/x64 enabled).
 
 The Android SDK installed for this checkout provides CMake 3.22.1. The current
 LIEF checkout declares CMake 3.24 as its minimum, although the ELF-only build

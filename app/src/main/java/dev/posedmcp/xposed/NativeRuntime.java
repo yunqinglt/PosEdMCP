@@ -174,6 +174,9 @@ public final class NativeRuntime {
      */
     static native int openLibrary(String path);
 
+    /** Sealed in-memory ELF, loaded with android_dlopen_ext; JSON with handleId or error. */
+    static native String loadSnapshot(byte[] bytes, String sha256);
+
     static native long findSymbol(int id, String name);
 
     static native long call(long address, int arity, long a0, long a1, long a2, long a3, long a4,

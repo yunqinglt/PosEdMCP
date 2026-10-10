@@ -3,6 +3,8 @@ package dev.deploy;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
+import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -36,6 +38,16 @@ public final class DeployAidlService extends Service {
         @Override
         public String analyze(String path, String op, String argsJson) {
             return wrap(() -> core.analyze(path, op, parse(argsJson)));
+        }
+
+        @Override
+        public ParcelFileDescriptor prepareLibrary(String path, Bundle metadata) {
+            try {
+                return dev.deploy.core.LibrarySnapshot.prepare(DeployAidlService.this, core, path, metadata);
+            } catch (Exception e) {
+                metadata.putString("error", e.toString());
+                return null;
+            }
         }
     };
 

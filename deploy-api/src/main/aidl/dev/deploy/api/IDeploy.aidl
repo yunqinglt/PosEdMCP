@@ -1,4 +1,6 @@
 package dev.deploy.api;
+import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 
 /**
  * Deploy's analysis interface, shared by the Deploy APK (which implements it)
@@ -18,7 +20,7 @@ package dev.deploy.api;
  *       injection</li>
  * </ul>
  *
- * <p>{@code disasm} is reserved but deliberately not implemented yet.
+ * <p>{@code disasm} uses Capstone; {@code decompile} reports unavailable until an engine is installed.
  */
 interface IDeploy {
 
@@ -30,4 +32,7 @@ interface IDeploy {
 
     /** JSON result for one op against one file. Errors come back as JSON too. */
     String analyze(String path, String op, String argsJson);
+
+    /** Read-only snapshot: descriptor + LIEF metadata. Does not load or execute the library. */
+    ParcelFileDescriptor prepareLibrary(String path, out Bundle metadata);
 }

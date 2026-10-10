@@ -5,6 +5,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.IBinder;
+import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.security.MessageDigest;
+import dev.deploy.api.DeployContract;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -59,6 +65,41 @@ public final class DeployClient {
     /** One op against one file, or an {@code {error}} object when unreachable. */
     public JSONObject analyze(String path, String op, JSONObject args) {
         return call((s) -> s.analyze(path, op, args == null ? "{}" : args.toString()));
+    }
+
+    public static final class Library {
+        public final JSONObject metadata;
+        public final byte[] bytes;
+        Library(JSONObject metadata, byte[] bytes) { this.metadata = metadata; this.bytes = bytes; }
+    }
+
+    /** Reads the immutable descriptor, outside Binder's transaction size limit. */
+    public Library prepareLibrary(String path) throws Exception {
+        IDeploy s = ensureBound(4_000L);
+        if (s == null) throw new IOException("Deploy companion is not installed or not running");
+        Bundle result = new Bundle();
+        ParcelFileDescriptor fd = s.prepareLibrary(path, result);
+        if (fd == null) throw new IOException(result.getString("error", "Deploy returned no snapshot descriptor"));
+        byte[] bytes;
+        try (ParcelFileDescriptor.AutoCloseInputStream in = new ParcelFileDescriptor.AutoCloseInputStream(fd);
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            if (result.containsKey("error")) throw new IOException(result.getString("error"));
+            byte[] buffer = new byte[32768];
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                if (out.size() + n > DeployContract.MAX_LIBRARY_BYTES)
+                    throw new IOException("native library exceeds 8 MiB transport limit");
+                out.write(buffer, 0, n);
+            }
+            bytes = out.toByteArray();
+        }
+        JSONObject info = new JSONObject(result.getString("metadata", "{}"));
+        StringBuilder hash = new StringBuilder();
+        for (byte b : MessageDigest.getInstance("SHA-256").digest(bytes))
+            hash.append(String.format(java.util.Locale.ROOT, "%02x", b & 255));
+        if (!hash.toString().equals(info.optString("sha256")) || info.optLong("size") != bytes.length)
+            throw new IOException("Deploy library snapshot integrity check failed");
+        return new Library(info, bytes);
     }
 
     private interface Op {

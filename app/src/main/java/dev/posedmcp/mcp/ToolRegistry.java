@@ -466,26 +466,75 @@ public final class ToolRegistry {
                         + " layer of it. 'path' is an absolute path Deploy can read - typically"
                         + " a file already copied to /sdcard, since Deploy is not root. 'op'"
                         + " selects the layer: overview (header, machine, entry), symbols,"
-                        + " relocations, strings, metadata, or resolve (hook addresses)."
+                        + " relocations, strings, metadata, resolve, or disasm (Capstone)."
+                        + " decompile is reserved and reports unavailable."
                         + " Read-only.")
                 .readOnly()
-                .input(props(
-                        "path", McpTool.string("Absolute path to the .so file to parse"),
-                        "op", enumOf("What to extract. Default overview",
-                                "overview", "symbols", "relocations", "strings", "metadata",
-                                "resolve")),
-                        "path")
+                .input(dev.deploy.api.DeployContract.analysisProperties(), "path")
                 .handler(args -> {
                     String path = require(args, "path");
                     String op = args.optString("op", "overview");
-                    return McpTool.json(DeployClient.get(context).analyze(path, op, args));
+                    JSONObject result = DeployClient.get(context).analyze(path, op, args);
+                    if (result.has("error")) return McpTool.error(result.toString());
+                    return McpTool.json(result);
                 })
                 .build());
 
         // =================================================================
-        // Root shell
+        // Native loading (Deploy analysis + scoped application execution)
         // =================================================================
 
+        add(McpTool.of("deploy_load_native")
+                .title("Load a native library into a scoped app")
+                .description("Deploy validates and snapshots an arm64 ELF shared object; PosEdMCP"
+                        + " sends those exact bytes to one selected scoped app process after confirmation."
+                        + " Requires an online peer from module_status and the Deploy companion."
+                        + " ELF constructors execute as the target app, with its UID; no root fallback."
+                        + " Optional entry must be an exported int64_t function(void), invoked once per request."
+                        + " JNI_OnLoad is not called. Dependencies must already be accessible in the target"
+                        + " linker namespace. Load lasts until process exit; no persistent hook or unload.")
+                .mutating()
+                .input(props(
+                        "package", McpTool.string("Scoped target package"),
+                        "peer", McpTool.string("Exact app:<package>:<pid> key from module_status"),
+                        "path", McpTool.string("ELF .so path readable by Deploy, maximum 8 MiB"),
+                        "entry", McpTool.string("Optional exported int64_t function(void) to call after load"),
+                        "reason", McpTool.string("What this native code does and why it is being loaded")),
+                        "package", "peer", "path", "reason")
+                .handler(args -> {
+                    String pkg = require(args, "package");
+                    String peer = require(args, "peer");
+                    String path = require(args, "path");
+                    String reason = require(args, "reason");
+                    String entry = args.optString("entry", "");
+                    if (SavedHook.isSystem(pkg) || pkg.equals(context.getPackageName()) || pkg.equals("dev.deploy"))
+                        throw new McpTool.ToolError("Choose an ordinary scoped application for native loading");
+                    if (!bridge.appPeerKeys(pkg).contains(peer))
+                        throw new McpTool.ToolError("Target peer is offline or does not belong to this package");
+                    if (!entry.isEmpty() && !entry.matches("[A-Za-z_][A-Za-z0-9_]{0,255}"))
+                        throw new McpTool.ToolError("Invalid entry symbol");
+                    DeployClient.Library library = DeployClient.get(context).prepareLibrary(path);
+                    String hash = library.metadata.getString("sha256");
+                    requireConfirmation(ConfirmationGate.Kind.PLUGIN, "Load native code into " + pkg,
+                            "Process: " + peer + "\nFile: " + path + "\nSize: " + library.bytes.length
+                                    + " bytes\nSHA-256: " + hash + "\nEntry: "
+                                    + (entry.isEmpty() ? "constructors only" : entry + " (int64_t(void))")
+                                    + "\nRuns as the target app; stays loaded until process exits.", reason);
+                    // A restarted process has a different key: never silently retarget after approval.
+                    if (!bridge.appPeerKeys(pkg).contains(peer))
+                        throw new McpTool.ToolError("Target process exited before loading");
+                    JSONObject call = new JSONObject().put("module_apk", context.getApplicationInfo().sourceDir)
+                            .put("sha256", hash).put("entry", entry)
+                            .put("library_base64", android.util.Base64.encodeToString(library.bytes,
+                                    android.util.Base64.NO_WRAP));
+                    JSONObject out = bridge.request(peer, "deploy_load_native", call, 30_000L);
+                    if (out.has("error")) throw new McpTool.ToolError(out.toString());
+                    out.put("library", library.metadata);
+                    return McpTool.json(out);
+                })
+                .build());
+
+        // Root shell
         add(McpTool.of("root_shell_exec")
                 .title("Run a root shell command")
                 .description("Runs one command as uid 0 via su. The user is shown a blocking dialog"

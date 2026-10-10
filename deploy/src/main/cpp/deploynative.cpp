@@ -16,8 +16,10 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <stdexcept>
 
 #include <LIEF/ELF.hpp>
+#include <capstone/capstone.h>
 
 #define TAG "DeployNative"
 
@@ -397,10 +399,6 @@ static std::string analyze(const std::string& op, const std::string& path,
         if (op == "strings") return strings(path, args);
         if (op == "metadata") return metadata(path);
         if (op == "resolve") return resolve(path, args);
-        if (op == "disasm") {
-            return "{\"backend\":\"lief\",\"op\":\"disasm\","
-                    "\"implemented\":false,\"note\":\"Capstone interface reserved\"}";
-        }
         return "{\"error\":\"unknown op '" + jsonEscape(op)
                 + "'. Known ops: overview, symbols, relocations, strings, metadata, resolve\"}";
     } catch (const std::exception& error) {
@@ -409,6 +407,98 @@ static std::string analyze(const std::string& op, const std::string& path,
     } catch (...) {
         return "{\"error\":\"analysis failed with an unknown native error\"}";
     }
+}
+
+static std::string disassemble(const std::string& path, const std::string& name,
+        const std::string& address, int byteLimit, int count, const std::string& mode) {
+    const auto binary = parseBinary(path);
+    if (!binary) throw std::runtime_error("LIEF could not parse this file");
+    uint64_t start = 0;
+    uint64_t symbolSize = 0;
+    if (!name.empty()) {
+        const Symbol* symbol = binary->get_dynamic_symbol(name);
+        if (!symbol) symbol = binary->get_symtab_symbol(name);
+        if (!symbol || symbol->shndx() == Symbol::UNDEF)
+            throw std::runtime_error("symbol is missing or undefined");
+        if (symbol->type() != Symbol::TYPE::FUNC && symbol->type() != Symbol::TYPE::GNU_IFUNC)
+            throw std::runtime_error("symbol is not a function");
+        start = symbol->value();
+        symbolSize = symbol->size();
+    } else {
+        size_t consumed = 0;
+        start = std::stoull(address, &consumed, 16);
+        if (consumed != address.size()) throw std::runtime_error("invalid hex address");
+    }
+    cs_arch arch;
+    cs_mode csMode = CS_MODE_LITTLE_ENDIAN;
+    std::string selectedMode = "default";
+    const auto machine = binary->header().machine_type();
+    if (binary->header().identity_data() != LIEF::ELF::Header::ELF_DATA::LSB)
+        throw std::runtime_error("disasm currently supports little-endian ELF only");
+    switch (machine) {
+        case LIEF::ELF::ARCH::AARCH64: arch = CS_ARCH_AARCH64; break;
+        case LIEF::ELF::ARCH::ARM:
+            arch = CS_ARCH_ARM;
+            selectedMode = mode == "auto" ? ((start & 1) ? "thumb" : "arm") : mode;
+            csMode = selectedMode == "thumb" ? CS_MODE_THUMB : CS_MODE_ARM;
+            start &= ~uint64_t{1};
+            break;
+        case LIEF::ELF::ARCH::X86_64: arch = CS_ARCH_X86; csMode = CS_MODE_64; break;
+        case LIEF::ELF::ARCH::I386: arch = CS_ARCH_X86; csMode = CS_MODE_32; break;
+        default: throw std::runtime_error("unsupported disasm architecture");
+    }
+    if (machine != LIEF::ELF::ARCH::ARM && mode != "auto")
+        throw std::runtime_error("mode is only applicable to ARM32");
+    if ((machine == LIEF::ELF::ARCH::AARCH64 && start % 4 != 0)
+            || (machine == LIEF::ELF::ARCH::ARM && start % (selectedMode == "thumb" ? 2 : 4) != 0))
+        throw std::runtime_error("instruction address is not aligned");
+    const Segment* code = nullptr;
+    for (const Segment& segment : binary->segments()) {
+        if (segment.type() == Segment::TYPE::LOAD && segment.has(Segment::FLAGS::X)
+                && start >= segment.virtual_address()
+                && start - segment.virtual_address() < segment.content().size()) {
+            code = &segment;
+            break;
+        }
+    }
+    if (!code) throw std::runtime_error("address is not in file-backed executable PT_LOAD content");
+    const auto content = code->content();
+    const size_t delta = start - code->virtual_address();
+    size_t window = byteLimit > 0 ? byteLimit : (symbolSize > 0 ? std::min<uint64_t>(symbolSize, 4096) : 256);
+    window = std::min(window, content.size() - delta);
+    if (symbolSize > 0) window = std::min<uint64_t>(window, symbolSize);
+    csh handle;
+    if (cs_open(arch, csMode, &handle) != CS_ERR_OK)
+        throw std::runtime_error("Capstone could not initialize");
+    struct Close { csh& h; ~Close() { cs_close(&h); } } close{handle};
+    cs_insn* instructions = nullptr;
+    const size_t decoded = cs_disasm(handle, content.data() + delta, window, start, count, &instructions);
+    struct Free { cs_insn* p; size_t n; ~Free() { cs_free(p, n); } } release{instructions, decoded};
+    if (decoded == 0) throw std::runtime_error("no instruction decoded at this address");
+    std::string out = "{\"backend\":\"capstone\",\"op\":\"disasm\",\"path\":" + jsonString(path)
+            + ",\"machine\":" + jsonString(machineName(machine)) + ",\"mode\":" + jsonString(selectedMode)
+            + ",\"addressKind\":\"elf_virtual_address\",\"address\":" + jsonString(hex(start))
+            + ",\"fileOffset\":" + jsonString(hex(code->file_offset() + delta))
+            + ",\"windowBytes\":" + std::to_string(window) + ",\"instructions\":[";
+    size_t consumed = 0;
+    for (size_t i = 0; i < decoded; ++i) {
+        const auto& insn = instructions[i];
+        if (i) out += ',';
+        std::string bytes;
+        for (size_t j = 0; j < insn.size; ++j) {
+            char b[3]; snprintf(b, sizeof b, "%02x", insn.bytes[j]); bytes += b;
+        }
+        out += "{\"address\":" + jsonString(hex(insn.address))
+                + ",\"fileOffset\":" + jsonString(hex(code->file_offset() + delta + consumed))
+                + ",\"size\":" + std::to_string(insn.size) + ",\"bytes\":" + jsonString(bytes)
+                + ",\"mnemonic\":" + jsonString(insn.mnemonic) + ",\"operands\":" + jsonString(insn.op_str) + "}";
+        consumed += insn.size;
+    }
+    out += "],\"count\":" + std::to_string(decoded) + ",\"decodedBytes\":" + std::to_string(consumed)
+            + ",\"nextAddress\":" + jsonString(hex(start + consumed))
+            + ",\"stopReason\":" + jsonString(consumed == window ? "window_end" :
+                (decoded == static_cast<size_t>(count) ? "instruction_limit" : "undecodable_bytes")) + "}";
+    return out;
 }
 
 } // namespace
@@ -425,5 +515,25 @@ Java_dev_deploy_core_DeployCore_nativeAnalyze(JNIEnv* env, jclass,
     if (cOp != nullptr) env->ReleaseStringUTFChars(op, cOp);
     if (cPath != nullptr) env->ReleaseStringUTFChars(path, cPath);
     if (cArgs != nullptr) env->ReleaseStringUTFChars(argsJson, cArgs);
+    return env->NewStringUTF(result.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_dev_deploy_core_DeployCore_nativeDisassemble(JNIEnv* env, jclass,
+        jstring path, jstring name, jstring address, jint bytes, jint count, jstring mode) {
+    auto string = [env](jstring s) {
+        const char* p = env->GetStringUTFChars(s, nullptr);
+        std::string value = p == nullptr ? "" : p;
+        if (p) env->ReleaseStringUTFChars(s, p);
+        return value;
+    };
+    std::string result;
+    try {
+        result = disassemble(string(path), string(name), string(address), bytes, count, string(mode));
+    } catch (const std::exception& e) {
+        result = "{\"error\":" + jsonString(e.what()) + "}";
+    } catch (...) {
+        result = "{\"error\":\"unknown native disassembly failure\"}";
+    }
     return env->NewStringUTF(result.c_str());
 }
