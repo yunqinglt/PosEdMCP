@@ -147,6 +147,8 @@ public final class SystemHooks {
                     args.optString("subject", ""), args.optInt("limit", 100)));
             bridge.registerHandler("hook_clear", args -> HookRegistry.clear(
                     args.optString("subject", "")));
+            bridge.registerHandler("special_hook_clear", args -> HookRegistry.clear(
+                    args.optString("subject", ""), args.getString("special")));
             bridge.registerHandler("invoke_method", args -> MethodInvoker.invoke(
                     args.optString("class", ""),
                     args.optString("method", ""),
@@ -156,6 +158,9 @@ public final class SystemHooks {
                     args.optString("instance_field", ""),
                     args.optString("instance_method", ""),
                     LOADER));
+            bridge.registerHandler("special_hook", args -> LuaRuntime.exec(
+                    SavedHook.SYSTEM_PACKAGE, LOADER, systemContext(), args.getString("source"),
+                    LuaRuntime.DEFAULT_MAX_INSTRUCTIONS, args.getString("special")));
             bridge.registerHandler("lua_exec", args -> {
                 // Only for scripts that reach the native layer; the library is
                 // loaded lazily, not here.

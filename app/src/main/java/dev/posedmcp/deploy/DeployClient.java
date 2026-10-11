@@ -67,6 +67,24 @@ public final class DeployClient {
         return call((s) -> s.analyze(path, op, args == null ? "{}" : args.toString()));
     }
 
+    public JSONObject assemble(String arch, String source, String address) {
+        return call(s -> s.assemble(arch, source, address));
+    }
+
+    public JSONObject analyzeBytes(byte[] bytes, String arch, String address, JSONObject args) {
+        if (bytes == null || bytes.length < 1 || bytes.length > 4096) return error("buffer must contain 1..4096 bytes");
+        return call(s -> {
+            java.io.File file = java.io.File.createTempFile("deploy-memory-", ".bin", context.getCacheDir());
+            try {
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) { out.write(bytes); }
+                try (ParcelFileDescriptor data = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)) {
+                    if (!file.delete()) throw new IOException("could not unlink memory snapshot");
+                    return s.analyzeBuffer(data, arch, address, args.toString());
+                }
+            } finally { file.delete(); }
+        });
+    }
+
     public static final class Library {
         public final JSONObject metadata;
         public final byte[] bytes;

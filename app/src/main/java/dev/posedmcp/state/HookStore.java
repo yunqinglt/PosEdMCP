@@ -116,7 +116,8 @@ public final class HookStore {
         for (SavedHook existing : hooks) {
             if (existing.packageName.equals(incoming.packageName)
                     && existing.className.equals(incoming.className)
-                    && existing.methodName.equals(incoming.methodName)) {
+                    && existing.methodName.equals(incoming.methodName)
+                    && existing.special.equals(incoming.special)) {
                 boolean changedWhatIsHooked = !existing.sameInstall(incoming);
                 if (changedWhatIsHooked) {
                     existing.lastAppliedAt = 0L;

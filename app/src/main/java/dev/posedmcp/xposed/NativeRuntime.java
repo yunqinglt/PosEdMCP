@@ -185,4 +185,6 @@ public final class NativeRuntime {
     static native byte[] readMemory(long address, int length);
 
     static native boolean writeMemory(long address, byte[] bytes);
+    static native byte[] readSnapshot(long address, int length) throws java.io.IOException;
+    static native String patchInstruction(long address, byte[] expected, byte[] replacement);
 }

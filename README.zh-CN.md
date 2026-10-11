@@ -443,6 +443,17 @@ service.sh        数 system_server 重启次数——这是看见用户态重�
 
 ## 注入到 native 层
 
+Deploy 通过 LIEF、Capstone、Ghidra 和 Keystone 提供 ELF 分析、反汇编、AArch64
+伪代码及五种架构模式的汇编。PosEdMCP 的 `deploy_disasm_memory` 将有限内存快照
+经 AIDL 交给 Deploy，`deploy_patch_memory` 在确认和旧字节校验后替换一条 ARM64 指令。
+特殊设置另有 ColorOS / HyperOS 的“帮助Deploy”开关。`deploy_load_native`
+使用 Deploy 校验后的快照，经插件确认策略加载到一个精确指定的作用域进程。
+接口和边界见 [Deploy 集成说明](docs/DEPLOY-NATIVE.md)。
+
+Deploy 与 Fixture 已在独立仓库维护（本机 `E:/deploy`），具有自己的 Gradle 构建和 MCP
+提示词。本仓库保留 PosEdMCP 集成代码及 [Deploy 契约副本](deploy-api/README.md)，
+无需 Deploy 源码即可构建 PosEdMCP。
+
 `app.native` 把代码往下一层推进：目标进程里的原生代码。模块本身就是从目标应用进程里运行的，
 所以它加载的 .so 就活在那个进程的地址空间里，够得到 Java 够不到的东西——应用自己的 .so、
 libc、以及任何符号名能解析到的地方。

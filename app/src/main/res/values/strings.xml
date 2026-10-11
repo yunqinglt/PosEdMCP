@@ -42,6 +42,16 @@
     <string name="value_offline">offline</string>
     <string name="label_module_processes">Module processes</string>
     <string name="value_processes_connected">%1$d connected</string>
+    <string name="section_auxiliary_apps">AUXILIARY APPS</string>
+    <string name="auxiliary_apps_intro">Companion applications share capabilities through explicit interfaces. More companions can appear here later.</string>
+    <string name="auxiliary_loading">checking companions…</string>
+    <string name="auxiliary_deploy">Deploy</string>
+    <string name="auxiliary_available">installed and reachable</string>
+    <string name="auxiliary_unavailable">not installed or unreachable</string>
+    <string name="auxiliary_version">Version</string>
+    <string name="auxiliary_backend">Backend</string>
+    <string name="auxiliary_api">AIDL API</string>
+    <string name="auxiliary_operations">%1$d analysis operations</string>
     <string name="label_overlay_permission">Overlay permission</string>
     <string name="value_granted">granted</string>
     <string name="value_not_granted">NOT granted</string>
@@ -153,6 +163,16 @@
     </plurals>
     <string name="hook_app_header">%1$s   ·   %2$d of %3$d on</string>
     <string name="action_source">Source</string>
+    <string name="action_native_details">Details</string>
+    <string name="hook_layer_native">NATIVE</string>
+    <string name="native_hook_details_intro">Native hooks are described by binary targets or address ranges. Deploy/ELF data is shown as details; there is no source text to display.</string>
+    <string name="native_hook_no_source">No source description was stored.</string>
+    <string name="section_native_injections">NATIVE LOADS</string>
+    <string name="native_injections_intro">Libraries loaded into a scoped process after confirmation. These entries are history, not persistent hooks: the load ends with that process and cannot be undone from this page.</string>
+    <string name="native_injection_title">%1$s · native library</string>
+    <string name="native_injection_hash">SHA-256: %1$s</string>
+    <string name="native_injection_entry">Entry %1$s returned %2$s</string>
+    <string name="native_injection_lifetime">Process lifetime · no unload operation</string>
     <string name="hook_off">off — kept, but not put into the app</string>
     <string name="hook_failed">FAILED — %1$s</string>
     <string name="hook_not_armed">on — not armed yet; it goes in when the app next starts</string>
@@ -278,4 +298,7 @@ Once it is on, it can be paused here at any time but not deleted - and the rescu
     <string name="toast_probe_refused_no_process">%1$s has no live process</string>
     <string name="toast_probe_refused_busy">%1$s is already frozen</string>
     <string name="toast_probe_refused_no_foreground">Could not tell which app is in front</string>
+    <string name="special_deploy_title">Help Deploy</string>
+    <string name="special_deploy_athena_blurb">ColorOS: protect Deploy from Athena cleanup and Hans background freezing of its process, network and Binder calls. Other apps and explicit user force-stop remain unaffected. Independent of the bridge protection switch; requires the system framework scope. ROM interface mismatches are reported as hook failures.</string>
+    <string name="special_deploy_powerkeeper_blurb">HyperOS: exempt Deploy and its subprocesses from the known background-cleaner force-stop reasons. Other apps and explicit user force-stop remain unaffected. Independent of the bridge protection switch; requires the system framework scope.</string>
 </resources>

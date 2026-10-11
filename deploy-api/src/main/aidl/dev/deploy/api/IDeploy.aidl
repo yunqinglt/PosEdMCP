@@ -6,21 +6,21 @@ import android.os.ParcelFileDescriptor;
  * Deploy's analysis interface, shared by the Deploy APK (which implements it)
  * and PosEdMCP (which binds to it).
  *
- * <p>Every call is read-only: it parses a shared object already on disk and
- * returns JSON as a string, the same convention {@code DexService} uses for its
- * Binder payloads. The {@code op} string selects the layer the full LIEF engine
- * will offer:
+ * <p>Calls analyze files/buffers or generate instruction bytes; none executes
+ * code or accesses another process. JSON replies describe each result/error.
+ * The {@code op} string selects the file analysis operation:
  * <ul>
  *   <li>{@code overview} - header, machine, type, entry point</li>
- *   <li>{@code symbols} - dynamic and regular symbol tables</li>
+ *   <li>{@code symbols} - dynamic symbol table</li>
  *   <li>{@code relocations} - PLT/GOT relocations</li>
  *   <li>{@code strings} - the string table</li>
- *   <li>{@code metadata} - build-id, notes, hardening hints</li>
+ *   <li>{@code metadata} - ELF header, interpreter, dependencies, sections and segments</li>
  *   <li>{@code resolve} - virtual address + file offset for a symbol, for native
  *       injection</li>
  * </ul>
  *
- * <p>{@code disasm} uses Capstone; {@code decompile} reports unavailable until an engine is installed.
+ * <p>{@code disasm} uses Capstone; {@code decompile} uses Ghidra for AArch64.
+ * Deploy status reports apiVersion=2; new methods are appended for wire compatibility.
  */
 interface IDeploy {
 
@@ -35,4 +35,10 @@ interface IDeploy {
 
     /** Read-only snapshot: descriptor + LIEF metadata. Does not load or execute the library. */
     ParcelFileDescriptor prepareLibrary(String path, out Bundle metadata);
+
+    /** Pure assembly: JSON encoded bytes, no execution. Appended to preserve existing transaction IDs. */
+    String assemble(String arch, String source, String address);
+
+    /** Bounded immutable byte snapshot, decoded at its original virtual address. Receiver closes its FD. */
+    String analyzeBuffer(in ParcelFileDescriptor data, String arch, String address, String argsJson);
 }

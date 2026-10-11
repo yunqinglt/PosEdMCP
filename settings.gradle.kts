@@ -25,7 +25,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "posedmcp"
 include(":app")
-include(":deploy")
+// Local source snapshot of the separately maintained Deploy contract.
 include(":deploy-api")
-// Optional test app; never packaged into either production APK.
-include(":native-fixture")

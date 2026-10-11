@@ -99,6 +99,18 @@ public final class SpecialHooks {
                 "com.android.server.am.ActivityManagerService",
                 "forceStopPackage",
                 "java.lang.String,int,int,java.lang.String"));
+        ALL.add(new Spec("deploy_athena", "com.oplus.athena",
+                dev.posedmcp.R.string.special_deploy_title,
+                dev.posedmcp.R.string.special_deploy_athena_blurb,
+                "special/deploy-athena.lua", SavedHook.SYSTEM_PACKAGE,
+                "com.android.server.am.OplusAthenaAmManager", "forceStopPackage",
+                "java.lang.String,int,int,int,java.lang.String,java.lang.String"));
+        ALL.add(new Spec("deploy_powerkeeper", "com.miui.powerkeeper",
+                dev.posedmcp.R.string.special_deploy_title,
+                dev.posedmcp.R.string.special_deploy_powerkeeper_blurb,
+                "special/deploy-powerkeeper.lua", SavedHook.SYSTEM_PACKAGE,
+                "com.android.server.am.ActivityManagerService", "forceStopPackage",
+                "java.lang.String,int,int,java.lang.String"));
     }
 
     private SpecialHooks() {

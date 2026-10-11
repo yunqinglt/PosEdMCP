@@ -556,12 +556,20 @@ The scripts are checked for CR before they ship. A Magisk script with CRLF endin
 
 ## Injecting into the native layer
 
-Deploy now supplies LIEF ELF analysis and Capstone disassembly over standalone
-MCP and AIDL. PosEdMCP's `deploy_load_native` loads a Deploy-validated library
+Deploy now supplies LIEF ELF analysis, Capstone disassembly, Ghidra AArch64
+pseudocode and Keystone assembly over standalone MCP and AIDL. PosEdMCP's
+`deploy_disasm_memory` sends bounded live snapshots to Deploy and
+`deploy_patch_memory` replaces one ARM64 instruction after expected-byte validation
+and confirmation. `deploy_load_native` loads a Deploy-validated library
 snapshot into one confirmed scoped app process. See
 [Deploy native analysis and loading](docs/DEPLOY-NATIVE.md) for the contract,
 limits and device smoke test. This is native library loading; persistent native
 hooks remain a separate milestone.
+
+Deploy and its native fixture are maintained in a separate repository (locally
+`E:/deploy`), with their own Gradle build and MCP prompt. This repository retains
+the PosEdMCP integration and a [Deploy API snapshot](deploy-api/README.md);
+building PosEdMCP does not require a Deploy checkout.
 
 `app.native` pushes code one level further down: the native code inside the target process.
 The module itself runs from inside the target application's process, so the .so files it
@@ -892,9 +900,11 @@ JDK 17+ is required (this project was verified with JDK 22).
   definition back → installed), so calls as early as `Application.onCreate` are usually
   already past. Catching those would have to happen in the LSPosed scope layer, which is
   outside this tool's scope.
-- **Hooks at the native layer are not implemented.** The `layer` field on the Hooks page
-  can only ever read `dex` today — it is there because native is the next step, not because
-  there are currently two values. An arm64 inline hook (overwriting a function prologue
+- **Native hook registration is still an engine task.** The `layer` field and Hooks page now
+  have a native presentation path: binary targets show details instead of fake source text.
+  The page also records successful Deploy native loads as process-lifetime history; it does not
+  offer an unload action. Until a native registration tool exists, persistent hook entries are
+  still `dex`; an arm64 inline hook (overwriting a function prologue
   plus a trampoline) carries a lot of risk — a bad prologue or a missed instruction-cache
   flush takes the target process down — and deserves a round of its own.
 

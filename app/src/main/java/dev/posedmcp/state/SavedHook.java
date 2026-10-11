@@ -30,14 +30,18 @@ public final class SavedHook {
      */
     public static final String SYSTEM_PACKAGE = "android";
 
-    /** A Java method hooked through the framework. The only layer there is today. */
+    /** A Java method hooked through the framework. */
     public static final String LAYER_DEX = "dex";
+    /** A native method hook. The page can display it even when no source exists. */
+    public static final String LAYER_NATIVE = "native";
 
     /** The body is the declarative rule - return a value, rewrite arguments, set fields. */
     public static final String BODY_RULE = "rule";
 
     /** The body is a Lua function, re-created by running {@link #source}. */
     public static final String BODY_LUA = "lua";
+    /** A native hook description, usually backed by a binary or address range. */
+    public static final String BODY_NATIVE = "native";
 
     public String id = "";
     public String packageName = "";

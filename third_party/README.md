@@ -1,15 +1,10 @@
-# Deploy native dependencies
+# Native dependencies moved to Deploy
 
-Deploy's native backend expects these local source trees:
+LIEF and Capstone now belong to the standalone Deploy repository (locally
+`E:/deploy`). Pinned commits, the CMake compatibility patch and setup instructions
+are maintained in its `third_party/README.md`.
 
-- `LIEF/` — the ELF parser, with its own `third-party/` dependency archives;
-- `capstone/` — instruction decoder for `disasm` (ARM, AArch64, x86/x64 enabled).
-
-The Android SDK installed for this checkout provides CMake 3.22.1. The current
-LIEF checkout declares CMake 3.24 as its minimum, although the ELF-only build
-used by Deploy configures and compiles with 3.22.1. Keep the local LIEF
-`CMakeLists.txt` minimum at 3.22 when preparing the dependency tree for this
-SDK.
-
-The parent repository ignores the dependency source trees. They are required
-at build time but are intentionally kept outside the PosEdMCP Git history.
+PosEdMCP no longer includes the Deploy or native-fixture Gradle modules and does
+not need these dependency trees to build. Existing ignored local checkouts are
+left in place as historical build inputs; they are not used by the new Deploy
+checkout or committed to either parent repository.

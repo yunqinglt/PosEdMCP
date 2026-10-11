@@ -47,6 +47,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import java.text.DateFormat;
 import java.util.Collections;
@@ -56,11 +57,13 @@ import java.util.List;
 import dev.posedmcp.Logx;
 import dev.posedmcp.a11y.AccessibilityBridge;
 import dev.posedmcp.a11y.AccessibilityRepair;
+import dev.posedmcp.deploy.DeployClient;
 import dev.posedmcp.ipc.BridgeCredentials;
 import dev.posedmcp.mcp.McpTool;
 import dev.posedmcp.root.ProbeWindow;
 import dev.posedmcp.state.HookGuard;
 import dev.posedmcp.state.HookStore;
+import dev.posedmcp.state.NativeInjectionStore;
 import dev.posedmcp.state.Prefs;
 import dev.posedmcp.state.SavedHook;
 import dev.posedmcp.state.SavedScript;
@@ -90,6 +93,8 @@ public class MainActivity extends AppCompatActivity {
     private ScrollView scriptsScroll;
     private ScrollView hooksScroll;
     private FrameLayout tabContent;
+    private LinearLayout auxiliaryStatus;
+    private int statusRenderGeneration;
     /** Which apps are open on the hook page. Collapsed by default. */
     private final java.util.Set<String> expandedApps = new java.util.LinkedHashSet<>();
 
@@ -604,6 +609,7 @@ public class MainActivity extends AppCompatActivity {
     // ---- status tab --------------------------------------------------------
 
     private void renderStatus() {
+        final int generation = ++statusRenderGeneration;
         statusContent.removeAllViews();
 
         McpService service = McpService.instance();
@@ -623,6 +629,13 @@ public class MainActivity extends AppCompatActivity {
             statusContent.addView(keyValue(getString(R.string.label_module_processes),
                     getString(R.string.value_processes_connected, service.connectedPeers())));
         }
+        statusContent.addView(section(getString(R.string.section_auxiliary_apps)));
+        statusContent.addView(body(getString(R.string.auxiliary_apps_intro)));
+        auxiliaryStatus = new LinearLayout(this);
+        auxiliaryStatus.setOrientation(LinearLayout.VERTICAL);
+        auxiliaryStatus.addView(caption(getString(R.string.auxiliary_loading)));
+        statusContent.addView(auxiliaryStatus);
+        loadAuxiliaryStatus(generation);
         statusContent.addView(keyValue(getString(R.string.label_overlay_permission),
                 getString(Settings.canDrawOverlays(this)
                         ? R.string.value_granted : R.string.value_not_granted)));
@@ -735,6 +748,38 @@ public class MainActivity extends AppCompatActivity {
         statusContent.addView(section(getString(R.string.section_tools)));
         statusContent.addView(body(getString(R.string.body_tools)));
         statusContent.addView(monoBlock(toolSummary()));
+    }
+
+    /** Reads companion status away from the UI thread; binding can wait on a ROM. */
+    private void loadAuxiliaryStatus(int generation) {
+        new Thread(() -> {
+            JSONObject deploy = DeployClient.get(this).status();
+            runOnUiThread(() -> {
+                if (generation != statusRenderGeneration || auxiliaryStatus == null) {
+                    return;
+                }
+                auxiliaryStatus.removeAllViews();
+                if (deploy.has("error")) {
+                    auxiliaryStatus.addView(keyValue(getString(R.string.auxiliary_deploy),
+                            getString(R.string.auxiliary_unavailable)));
+                    auxiliaryStatus.addView(caption(deploy.optString("error")));
+                    return;
+                }
+                auxiliaryStatus.addView(keyValue(getString(R.string.auxiliary_deploy),
+                        getString(R.string.auxiliary_available)));
+                auxiliaryStatus.addView(keyValue(getString(R.string.auxiliary_version),
+                        deploy.optString("version", "?")));
+                auxiliaryStatus.addView(keyValue(getString(R.string.auxiliary_backend),
+                        deploy.optString("backend", "?")));
+                auxiliaryStatus.addView(keyValue(getString(R.string.auxiliary_api),
+                        String.valueOf(deploy.optInt("apiVersion", 0))));
+                JSONArray ops = deploy.optJSONArray("ops");
+                if (ops != null) {
+                    auxiliaryStatus.addView(caption(getString(R.string.auxiliary_operations,
+                            ops.length())));
+                }
+            });
+        }, "posedmcp-auxiliary-status").start();
     }
 
     /** Read off the registry rather than kept as a second list that goes stale. */
@@ -1122,6 +1167,18 @@ public class MainActivity extends AppCompatActivity {
                     ? R.string.hooks_guard_installed : R.string.hooks_guard_missing)));
         }
 
+        // Native loads are process-lifetime operations rather than persistent
+        // hooks. They live in their own section so the page records the event
+        // without offering a misleading on/off switch or an unload button.
+        List<JSONObject> nativeLoads = NativeInjectionStore.of(this).all();
+        if (!nativeLoads.isEmpty()) {
+            hooksContent.addView(section(getString(R.string.section_native_injections)));
+            hooksContent.addView(body(getString(R.string.native_injections_intro)));
+            for (JSONObject load : nativeLoads) {
+                hooksContent.addView(nativeInjectionCard(load));
+            }
+        }
+
         // The countermeasures this app ships are kept in the same library - that
         // is what arms them again after every restart - but this page is not
         // theirs to show. They are not hooks an agent made, they are not aimed
@@ -1143,17 +1200,48 @@ public class MainActivity extends AppCompatActivity {
                 shown.put(pkg, ordinary);
             }
         }
-        if (packages.isEmpty()) {
+        if (packages.isEmpty() && nativeLoads.isEmpty()) {
             hooksContent.addView(section(getString(R.string.section_nothing_registered)));
             hooksContent.addView(body(getString(R.string.hooks_empty_body)));
             return;
         }
 
-        hooksContent.addView(section(getResources().getQuantityString(
-                R.plurals.apps_count, packages.size(), packages.size())));
-        for (String pkg : packages) {
-            hooksContent.addView(hookCard(pkg, shown.get(pkg)));
+        if (!packages.isEmpty()) {
+            hooksContent.addView(section(getResources().getQuantityString(
+                    R.plurals.apps_count, packages.size(), packages.size())));
+            for (String pkg : packages) {
+                hooksContent.addView(hookCard(pkg, shown.get(pkg)));
+            }
         }
+    }
+
+    private View nativeInjectionCard(JSONObject load) {
+        MaterialCardView card = new MaterialCardView(this);
+        card.setCardElevation(dp(1));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(10);
+        card.setLayoutParams(params);
+        LinearLayout inner = new LinearLayout(this);
+        inner.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(14);
+        inner.setPadding(pad, pad, pad, pad);
+        inner.addView(title(getString(R.string.native_injection_title,
+                appLabel(load.optString("package", "?")))));
+        inner.addView(caption(load.optString("peer", "")));
+        inner.addView(monoBlock(load.optString("path", "")));
+        String hash = load.optString("sha256", "");
+        if (!hash.isEmpty()) {
+            inner.addView(caption(getString(R.string.native_injection_hash, hash)));
+        }
+        String entry = load.optString("entry", "");
+        if (!entry.isEmpty()) {
+            inner.addView(caption(getString(R.string.native_injection_entry,
+                    entry, load.optString("entryResult", "?"))));
+        }
+        inner.addView(caption(getString(R.string.native_injection_lifetime)));
+        card.addView(inner);
+        return card;
     }
 
     private View hookCard(String pkg, List<SavedHook> hooks) {
@@ -1212,9 +1300,13 @@ public class MainActivity extends AppCompatActivity {
         lp.topMargin = dp(16);
         block.setLayoutParams(lp);
 
-        // What kind of hook this is, and what its body can do. "dex" is the only
-        // layer there is; the field is here because the next one is native.
-        block.addView(caption(hook.layer.toUpperCase(java.util.Locale.ROOT) + "  ·  "
+        // Keep the layer visible. Native hooks do not necessarily have source
+        // text, so the page shows their binary target/details instead of opening
+        // an empty "source" dialog.
+        String layer = SavedHook.LAYER_NATIVE.equals(hook.layer)
+                ? getString(R.string.hook_layer_native)
+                : hook.layer.toUpperCase(java.util.Locale.ROOT);
+        block.addView(caption(layer + "  ·  "
                 + hook.body.toUpperCase(java.util.Locale.ROOT)));
         TextView target = monoBlock(hook.target());
         target.setTextAppearance(com.google.android.material.R.style
@@ -1232,11 +1324,29 @@ public class MainActivity extends AppCompatActivity {
         if (SavedHook.BODY_LUA.equals(hook.body)) {
             actions.addView(tonalButton(getString(R.string.action_source),
                     v -> showHookSource(hook)));
+        } else if (SavedHook.LAYER_NATIVE.equals(hook.layer)) {
+            actions.addView(tonalButton(getString(R.string.action_native_details),
+                    v -> showNativeHookDetails(hook)));
         }
         actions.addView(outlinedButton(getString(R.string.action_delete),
                 v -> confirmDeleteHook(hook)));
         block.addView(actions);
         return block;
+    }
+
+    private void showNativeHookDetails(SavedHook hook) {
+        String details = hook.spec == null || hook.spec.isEmpty()
+                ? getString(R.string.native_hook_no_source)
+                : hook.spec;
+        TextView content = monoBlock(details);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(hook.target())
+                .setMessage(getString(R.string.native_hook_details_intro))
+                .setView(scroll)
+                .setPositiveButton(R.string.action_close, null)
+                .show();
     }
 
     private String statusLine(SavedHook hook) {

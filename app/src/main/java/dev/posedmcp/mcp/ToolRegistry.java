@@ -41,6 +41,7 @@ import dev.posedmcp.state.EventStore;
 import dev.posedmcp.state.HookGuard;
 import dev.posedmcp.state.HookRecordStore;
 import dev.posedmcp.state.HookStore;
+import dev.posedmcp.state.NativeInjectionStore;
 import dev.posedmcp.state.Prefs;
 import dev.posedmcp.state.ProbeStore;
 import dev.posedmcp.state.SavedHook;
@@ -467,7 +468,7 @@ public final class ToolRegistry {
                         + " a file already copied to /sdcard, since Deploy is not root. 'op'"
                         + " selects the layer: overview (header, machine, entry), symbols,"
                         + " relocations, strings, metadata, resolve, or disasm (Capstone)."
-                        + " decompile is reserved and reports unavailable."
+                        + " decompile provides Ghidra C pseudocode for AArch64."
                         + " Read-only.")
                 .readOnly()
                 .input(dev.deploy.api.DeployContract.analysisProperties(), "path")
@@ -479,6 +480,89 @@ public final class ToolRegistry {
                     return McpTool.json(result);
                 })
                 .build());
+
+        add(McpTool.of("deploy_assemble")
+                .title("Assemble native instructions")
+                .description("Keystone assembler through Deploy. Returns machine-code hex bytes without executing or writing memory. Use the final virtual address for PC-relative instructions.")
+                .readOnly()
+                .input(dev.deploy.api.DeployContract.assemblyProperties(), "arch", "source")
+                .handler(args -> deployResult(DeployClient.get(context).assemble(require(args, "arch"),
+                        require(args, "source"), args.optString("address", "0x0"))))
+                .build());
+
+        add(McpTool.of("deploy_analyze_bytes")
+                .title("Disassemble a byte buffer")
+                .description("Decode supplied hex bytes with Deploy/Capstone via a read-only AIDL snapshot. No process access.")
+                .readOnly()
+                .input(dev.deploy.api.DeployContract.bufferProperties(), "arch", "bytes")
+                .handler(args -> deployResult(DeployClient.get(context).analyzeBytes(
+                        decodeNativeBytes(require(args, "bytes")), require(args, "arch"),
+                        args.optString("address", "0x0"), args)))
+                .build());
+
+        add(McpTool.of("deploy_disasm_memory")
+                .title("Read and disassemble scoped process memory")
+                .description("After plugin confirmation, read 1..4096 bytes in one readable mapping of an exact scoped app peer; send an immutable snapshot by AIDL to Deploy/Capstone. Runtime addresses include ASLR. No root fallback or system targets.")
+                .mutating()
+                .input(props("package", McpTool.string("Scoped application package"),
+                        "peer", McpTool.string("Exact app:<package>:<pid> from module_status"),
+                        "address", McpTool.string("Runtime virtual address, hexadecimal 0x..."),
+                        "length", McpTool.integer("Bytes to snapshot, 1..4096, default 256"),
+                        "max", McpTool.integer("Maximum decoded instructions, 1..512, default 64"),
+                        "reason", McpTool.string("Why the process memory must be read")),
+                        "package", "peer", "address", "reason")
+                .handler(args -> {
+                    String pkg=require(args,"package"), peer=require(args,"peer"), address=require(args,"address");
+                    nativePeer(pkg,peer); nativeAddress(address);
+                    int length=args.optInt("length",256), max=args.optInt("max",64);
+                    if(length<1 || length>4096 || max<1 || max>512) throw new McpTool.ToolError("invalid byte or instruction limit");
+                    requireConfirmation(ConfirmationGate.Kind.PLUGIN, "Read native memory in " + pkg,
+                            "Process: " + peer + "\nRuntime address: " + address + "\nBytes: " + length,
+                            require(args,"reason"));
+                    nativePeer(pkg,peer);
+                    JSONObject call=nativeCall(peer).put("address",address).put("length",length);
+                    JSONObject snapshot=bridge.request(peer,"deploy_read_memory",call,10_000L);
+                    if(snapshot.has("error")) return McpTool.error(snapshot.toString());
+                    byte[] bytes=decodeNativeBytes(snapshot.getString("bytes"));
+                    if(bytes.length!=length) throw new McpTool.ToolError("incomplete memory snapshot");
+                    JSONObject out=DeployClient.get(context).analyzeBytes(bytes,snapshot.getString("arch"),address,args);
+                    snapshot.remove("bytes");
+                    out.put("snapshot",snapshot)
+                            .put("peer",peer).put("addressKind","runtime_virtual_address");
+                    return deployResult(out);
+                }).build());
+
+        add(McpTool.of("deploy_patch_memory")
+                .title("Patch one ARM64 instruction in a scoped process")
+                .description("Assemble exactly one 4-byte ARM64 instruction at its final runtime address and atomically replace expected bytes in private executable memory, after plugin confirmation. Flushes instruction cache and restores page permissions. No execution call, persistence, root fallback or automatic rollback. Requires a live exact peer and expected original bytes.")
+                .mutating()
+                .input(props("package",McpTool.string("Scoped application package"),
+                        "peer",McpTool.string("Exact app:<package>:<pid> from module_status"),
+                        "address",McpTool.string("Aligned runtime virtual address, hexadecimal 0x..."),
+                        "source",McpTool.string("One ARM64 instruction"),
+                        "expected",McpTool.string("Exactly 4 original bytes as 8 hexadecimal digits"),
+                        "reason",McpTool.string("What this instruction changes and why")),
+                        "package","peer","address","source","expected","reason")
+                .handler(args -> {
+                    String pkg=require(args,"package"),peer=require(args,"peer"),address=require(args,"address");
+                    nativePeer(pkg,peer); nativeAddress(address);
+                    String expected=require(args,"expected"),source=require(args,"source");
+                    if(!expected.matches("[0-9a-fA-F]{8}")) throw new McpTool.ToolError("expected must be exactly 4 bytes");
+                    JSONObject assembled=DeployClient.get(context).assemble("aarch64",source,address);
+                    if(assembled.has("error")) return McpTool.error(assembled.toString());
+                    String bytes=assembled.getString("bytes");
+                    if(!bytes.matches("[0-9a-fA-F]{8}")) throw new McpTool.ToolError("patch accepts exactly one 4-byte instruction");
+                    requireConfirmation(ConfirmationGate.Kind.PLUGIN,"Patch native code in " + pkg,
+                            "Process: " + peer + "\nRuntime address: " + address + "\nAssembly: " + source
+                            + "\nExpected bytes: " + expected + "\nNew bytes: " + bytes
+                            + "\nExisting execution can observe the new instruction immediately.",require(args,"reason"));
+                    nativePeer(pkg,peer);
+                    JSONObject out=bridge.request(peer,"deploy_patch_memory",nativeCall(peer)
+                            .put("address",address).put("expected",expected).put("bytes",bytes),10_000L);
+                    out.put("peer",peer).put("expectedBytes",expected).put("replacementBytes",bytes);
+                    if (out.optBoolean("patched")) out.put("originalBytes",expected);
+                    return deployResult(out);
+                }).build());
 
         // =================================================================
         // Native loading (Deploy analysis + scoped application execution)
@@ -530,6 +614,8 @@ public final class ToolRegistry {
                     JSONObject out = bridge.request(peer, "deploy_load_native", call, 30_000L);
                     if (out.has("error")) throw new McpTool.ToolError(out.toString());
                     out.put("library", library.metadata);
+                    NativeInjectionStore.of(context).record(pkg, peer, path,
+                            library.metadata, out);
                     return McpTool.json(out);
                 })
                 .build());
@@ -2348,6 +2434,32 @@ public final class ToolRegistry {
             }
         }
         return distinct.size() == 1 ? distinct.values().iterator().next() : null;
+    }
+
+    private static JSONObject deployResult(JSONObject value) throws Exception {
+        return value.has("error") ? McpTool.error(value.toString()) : McpTool.json(value);
+    }
+
+    private void nativePeer(String pkg, String peer) throws McpTool.ToolError {
+        if (pkg.equals("android") || pkg.equals("system_server") || pkg.equals(context.getPackageName()) || pkg.equals("dev.deploy")
+                || !bridge.appPeerKeys(pkg).contains(peer))
+            throw new McpTool.ToolError("choose an online exact peer of an ordinary scoped application");
+    }
+
+    private static void nativeAddress(String address) throws McpTool.ToolError {
+        if (!address.matches("0[xX][0-9a-fA-F]{1,16}")) throw new McpTool.ToolError("address must be hexadecimal 0x...");
+    }
+
+    private JSONObject nativeCall(String peer) throws Exception {
+        return new JSONObject().put("pid", Integer.parseInt(peer.substring(peer.lastIndexOf(':')+1)))
+                .put("module_apk", context.getApplicationInfo().sourceDir);
+    }
+
+    private static byte[] decodeNativeBytes(String value) throws McpTool.ToolError {
+        if (!value.matches("(?:[0-9a-fA-F]{2}){1,4096}")) throw new McpTool.ToolError("expected 1..4096 bytes as hexadecimal pairs");
+        byte[] out=new byte[value.length()/2];
+        for(int i=0;i<out.length;i++)out[i]=(byte)Integer.parseInt(value.substring(i*2,i*2+2),16);
+        return out;
     }
 
     private static String describeInputTarget(String action, JSONObject args) {        switch (action) {

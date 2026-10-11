@@ -47,6 +47,16 @@
     <string name="value_offline">离线</string>
     <string name="label_module_processes">模块进程</string>
     <string name="value_processes_connected">%1$d 个已连接</string>
+    <string name="section_auxiliary_apps">辅助应用</string>
+    <string name="auxiliary_apps_intro">辅助应用通过明确接口共享能力，未来可以在这里加入更多辅助应用。</string>
+    <string name="auxiliary_loading">正在检查辅助应用…</string>
+    <string name="auxiliary_deploy">Deploy</string>
+    <string name="auxiliary_available">已安装且可连接</string>
+    <string name="auxiliary_unavailable">未安装或不可连接</string>
+    <string name="auxiliary_version">版本</string>
+    <string name="auxiliary_backend">后端</string>
+    <string name="auxiliary_api">AIDL API</string>
+    <string name="auxiliary_operations">%1$d 个分析操作</string>
     <string name="label_overlay_permission">悬浮窗权限</string>
     <string name="value_granted">已授予</string>
     <string name="value_not_granted">未授予</string>
@@ -158,6 +168,16 @@
     </plurals>
     <string name="hook_app_header">%1$s   ·   %2$d / %3$d 开着</string>
     <string name="action_source">源码</string>
+    <string name="action_native_details">详情</string>
+    <string name="hook_layer_native">Native</string>
+    <string name="native_hook_details_intro">Native 钩子由二进制目标或地址范围描述。这里显示的是 Deploy/ELF 详情；它没有可以展示的源码文本。</string>
+    <string name="native_hook_no_source">没有保存源码描述。</string>
+    <string name="section_native_injections">动态库加载</string>
+    <string name="native_injections_intro">这些库是在确认后加载进作用域进程的。它们是历史记录，不是持久钩子：进程结束时加载随之消失，不能从此页撤销。</string>
+    <string name="native_injection_title">%1$s · Native 动态库</string>
+    <string name="native_injection_hash">SHA-256：%1$s</string>
+    <string name="native_injection_entry">入口 %1$s 返回 %2$s</string>
+    <string name="native_injection_lifetime">进程生命周期 · 没有卸载接口</string>
     <string name="hook_off">已关 — 仍然保留，但不装进应用</string>
     <string name="hook_failed">失败 — %1$s</string>
     <string name="hook_not_armed">已启用 — 还没装载；等该应用下次启动时自动装载</string>
@@ -283,4 +303,7 @@
     <string name="toast_probe_refused_no_process">%1$s 没有在运行的进程</string>
     <string name="toast_probe_refused_busy">%1$s 已经被冻住了</string>
     <string name="toast_probe_refused_no_foreground">判断不出前台是哪个应用</string>
+    <string name="special_deploy_title">帮助Deploy</string>
+    <string name="special_deploy_athena_blurb">ColorOS：保护 Deploy，拦截雅典娜后台强停，并避免 Hans 冻结进程、网络和 Binder 调用。其他应用和用户主动强停不受影响。与奈何桥自身保护开关独立，需要系统框架作用域；ROM 接口不匹配会报告钩子失败。</string>
+    <string name="special_deploy_powerkeeper_blurb">HyperOS：让已知后台清理原因的强停跳过 Deploy 及其子进程。其他应用和用户主动强停不受影响。与奈何桥自身保护开关独立，需要系统框架作用域。</string>
 </resources>

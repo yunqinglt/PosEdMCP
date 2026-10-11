@@ -107,6 +107,8 @@ public final class AppHost {
             bridge.registerHandler("list_plugins", args -> listPlugins());
             bridge.registerHandler("unload_plugin", args -> unloadPlugin(args));
             bridge.registerHandler("deploy_load_native", args -> NativeLibraryLoader.load(packageName, args));
+            bridge.registerHandler("deploy_read_memory", args -> NativeMemoryOps.read(packageName, args));
+            bridge.registerHandler("deploy_patch_memory", args -> NativeMemoryOps.patch(packageName, args));
             // Runtime observation and alteration: the dynamic half of static
             // analysis. No plugin DEX involved - the module installs the hook
             // directly, so an agent can go from a smali listing to changing what
@@ -122,6 +124,8 @@ public final class AppHost {
                     args.optString("subject", ""), args.optInt("limit", 100)));
             bridge.registerHandler("hook_clear", args -> HookRegistry.clear(
                     args.optString("subject", "")));
+            bridge.registerHandler("special_hook_clear", args -> HookRegistry.clear(
+                    args.optString("subject", ""), args.getString("special")));
             // The other half of injection: make a call as the application, with
             // its class loader and its privileges, so private and unexported
             // methods are reachable without a plugin DEX.
@@ -137,6 +141,9 @@ public final class AppHost {
             // Logic, rather than a single call. The interpreter is part of this
             // module, so it is already here in the target process - nothing is
             // compiled and nothing is pushed over the bridge.
+            bridge.registerHandler("special_hook", args -> LuaRuntime.exec(
+                    packageName, appClassLoader, currentApplication(), args.getString("source"),
+                    LuaRuntime.DEFAULT_MAX_INSTRUCTIONS, args.getString("special")));
             bridge.registerHandler("lua_exec", args -> {
                 // Only the app it belongs to knows where the module APK is, and
                 // only the module needs it - to load its own native library from
@@ -233,7 +240,8 @@ public final class AppHost {
             throws Exception {
         if (SavedHook.BODY_LUA.equals(hook.optString("body", SavedHook.BODY_RULE))) {
             LuaRuntime.exec(packageName, appClassLoader, currentApplication(),
-                    hook.optString("source", ""), LuaRuntime.DEFAULT_MAX_INSTRUCTIONS);
+                    hook.optString("source", ""), LuaRuntime.DEFAULT_MAX_INSTRUCTIONS,
+                    hook.optString("special", ""));
             return;
         }
         JSONObject spec = new JSONObject(hook.optString("spec", "{}"));

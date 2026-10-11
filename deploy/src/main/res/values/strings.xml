@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">Deploy</string>
-    <string name="notif_channel">Deploy MCP service</string>
-</resources>

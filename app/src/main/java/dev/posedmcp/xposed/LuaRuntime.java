@@ -130,6 +130,14 @@ public final class LuaRuntime {
 
     public static JSONObject exec(String packageName, ClassLoader appClassLoader,
             Context appContext, String source, long maxInstructions) throws Exception {
+        return exec(packageName, appClassLoader, appContext, source, maxInstructions, "");
+    }
+
+    /** The owner is supplied by the saved-hook transport, never by a Lua script. */
+    public static JSONObject exec(String packageName, ClassLoader appClassLoader,
+            Context appContext, String source, long maxInstructions, String special) throws Exception {
+        if (special == null || !special.matches("[a-z_]*"))
+            throw new IllegalArgumentException("invalid special hook identity");
         if (source == null || source.trim().isEmpty()) {
             throw new IllegalArgumentException("source is required");
         }
@@ -144,7 +152,7 @@ public final class LuaRuntime {
         // Hooks a script registers are reported back, so the caller can offer to
         // keep them: a hook that dies with the process is only half a hook.
         List<JSONObject> installed = new ArrayList<>();
-        globals.set("app", host(packageName, appClassLoader, appContext, out, databases, installed));
+        globals.set("app", host(packageName, appClassLoader, appContext, out, databases, installed, special));
 
         long startedAt = System.currentTimeMillis();
         try {
@@ -243,7 +251,7 @@ public final class LuaRuntime {
     }
 
     private static LuaTable host(String packageName, ClassLoader loader, Context context,
-            PrintStream out, List<SQLiteDatabase> databases, List<JSONObject> installed) {
+            PrintStream out, List<SQLiteDatabase> databases, List<JSONObject> installed, String special) {
         LuaTable host = new LuaTable();
         host.set("name", fn(a -> LuaValue.valueOf(packageName)));
         host.set("uid", fn(a -> LuaValue.valueOf(android.os.Process.myUid())));
@@ -291,7 +299,7 @@ public final class LuaRuntime {
 
         host.set("db", fn(a -> openDatabase(a.checkjstring(1), databases)));
 
-        host.set("hook", fn(a -> installHook(a.arg(1), loader, installed)));
+        host.set("hook", fn(a -> installHook(a.arg(1), loader, installed, special)));
 
         host.set("native", nativeApi());
 
@@ -320,7 +328,7 @@ public final class LuaRuntime {
      * the hook page - these fields are what that page shows.
      */
     private static LuaValue installHook(LuaValue spec, ClassLoader loader,
-            List<JSONObject> installed) throws Exception {
+            List<JSONObject> installed, String special) throws Exception {
         if (!spec.istable()) {
             throw new LuaError("app.hook takes a table, for example: app.hook{"
                     + "class = \"com.x.Y\", method = \"z\", effect = \"what this does\","
@@ -347,7 +355,7 @@ public final class LuaRuntime {
         String effect = textOf(t.get("effect"));
         HookRegistry.installCustom(className, methodName,
                 textOf(t.get("params")), t.get("max_records").optint(200),
-                new LuaHookBody(before, after), effect.isEmpty() ? null : effect, loader);
+                new LuaHookBody(before, after), effect.isEmpty() ? null : effect, loader, special);
 
         if (installed != null) {
             installed.add(new JSONObject()

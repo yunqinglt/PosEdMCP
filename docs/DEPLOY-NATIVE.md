@@ -1,130 +1,90 @@
-# Deploy analysis and native loading
+# Deploy integration in PosEdMCP
 
-Deploy 0.3.0 runs LIEF + Capstone on the device. The standalone MCP endpoint
-(`127.0.0.1:4177`), PosEdMCP's AIDL proxy, and the future frontend share the same
-analysis core. The applications have separate UIDs and preferences; no shared UID
-or root capability is added to Deploy.
+Deploy and its native fixture are maintained in a separate repository, currently
+`E:/deploy`. They were extracted from PosEdMCP commit
+`7212643ce52ea313cb8bcba43804405f4ca976ef`. PosEdMCP retains its AIDL client,
+ConfirmationGate and scoped-process native loader, plus a
+[local API contract snapshot](../deploy-api/README.md).
 
-## Disassembly
+## Build and documentation ownership
 
-Call `deploy_analyze` on either server:
+Build `:app:assembleDebug` in this repository using the normal PosEdMCP setup.
+The only included modules here are `app` and `deploy-api`; a Deploy checkout is
+not required. Build `:deploy:assembleDebug :native-fixture:assembleDebug` in the
+Deploy repository using its own settings and native dependencies.
 
-```json
-{"path":"/sdcard/libc.so","op":"disasm","name":"strlen","max":16}
-```
+The Deploy repository owns these documents and the integration test:
 
-Supply exactly one of `name` and `address`. Addresses are hexadecimal strings in
-the ELF virtual address space, **before ASLR**, not file offsets or runtime
-addresses. Results contain each instruction's ELF address, file offset, bytes,
-size, mnemonic and operands. `nextAddress` and `stopReason` describe continuation.
-An IFUNC symbol describes its resolver, not the implementation selected at runtime.
+- `README.md`: dependency preparation and standalone builds.
+- `docs/MCP_PROMPT.md`: the Deploy agent prompt; PosEdMCP's prompt remains
+  [here](MCP_PROMPT.md).
+- `docs/DEPLOY-NATIVE.md`: full analysis/loader contract and device verification.
+- `tools/deploy-smoke.py`: two-server analysis, scoped loading and isolation checks.
+- `MILESTONE-REPORT.md`: historical device results and unverified architectures.
 
-- `max`: instruction count, default 64, range 1–512.
-- `bytes`: byte window, range 1–4096; defaults to the symbol size (capped at 4096),
-  or 256 when no symbol size is available. Symbol and file-backed executable
-  segment boundaries cap the window.
-- Supported ELF architectures: AArch64, ARM/Thumb, x86 and x86_64, little-endian.
-  The APK itself is arm64. For ARM32 `mode=auto` uses the symbol/address low bit;
-  use `mode=thumb` for a raw even Thumb address or `mode=arm` for ARM instructions.
-- Unmapped, misaligned, undefined or non-function addresses/symbols produce an
-  error. No instruction is fabricated when decoding stops.
-- `op=decompile` is reserved for a future C pseudocode engine. It returns
-  `DECOMPILER_UNAVAILABLE`; it does not label assembly as pseudocode.
+These paths are relative to the Deploy checkout. Its remote has not been
+configured; `E:/deploy` is a local location, not a build-time dependency.
+Contract changes must be synchronized as described in
+[deploy-api/README.md](../deploy-api/README.md).
 
-The shared `DeployContract` keeps both MCP input schemas aligned, including
-`name`, `address`, `max`, `bytes`, and `mode`. These arguments are also available
-through AIDL. Native errors set the MCP tool error flag.
+## Server and privilege boundaries
 
-## Runtime loading through PosEdMCP
+| Interface | Owner | Behavior |
+| --- | --- | --- |
+| MCP `127.0.0.1:8765/mcp` | PosEdMCP | Device/root/module tools and Deploy integration |
+| MCP `127.0.0.1:4177/mcp` | Deploy | Status, ELF analysis/pseudocode, assembly and byte decoding |
+| `dev.deploy.DeployAidlService` | Deploy | Analysis, assembly and read-only library/buffer snapshots |
+| `deploy_load_native` | PosEdMCP | Confirmed loading into one exact scoped app peer |
+| `deploy_disasm_memory` | PosEdMCP | Confirmed 1–4096-byte target snapshot decoded through AIDL |
+| `deploy_patch_memory` | PosEdMCP | Confirmed single ARM64 instruction replacement with expected-byte check |
 
-Only PosEdMCP advertises `deploy_load_native`. Select the exact online peer from
-`module_status`; the target must be an ordinary application in the framework's
-scope, started since the updated module was installed.
+The apps use separate UIDs and MCP tokens. Deploy is non-root. AIDL analysis
+reads with Deploy's file access, even when invoked through PosEdMCP. Missing
+Deploy produces a companion error without disabling PosEdMCP's other tools;
+Deploy alone can analyze readable `/sdcard/` files without privileged services.
 
-```json
-{
-  "package":"dev.deploy.fixture",
-  "peer":"app:dev.deploy.fixture:12345",
-  "path":"/sdcard/deploy-tests/libdeploy_fixture.so",
-  "entry":"deploy_fixture_probe",
-  "reason":"Load the test library and return the PID captured by its constructor"
-}
-```
+Native loading accepts little-endian arm64 ET_DYN libraries up to 8 MiB, rejects
+PIE executables with an interpreter, and targets ordinary scoped applications.
+Use the exact online `app:<package>:<pid>` from `module_status`; system_server,
+PosEdMCP and Deploy are excluded. Deploy validates a snapshot with LIEF, returns
+a read-only PFD and metadata, and PosEdMCP verifies its hash before the existing
+plugin confirmation policy. The target verifies the bytes again and uses sealed
+memfd plus `android_dlopen_ext(RTLD_NOW | RTLD_LOCAL)` as the target app UID.
+There is no automatic root fallback or switch to a different peer.
 
-Replace the peer key with the live value. The flow is:
+Constructors execute. The optional entry must be `int64_t function(void)` and is
+called on each approved request. `JNI_OnLoad` is not called automatically.
+Identical hashes reuse the process's loaded handle, which lasts until exit;
+there is no automatic unload or persistent native hook registration. A missing
+entry or timeout can occur after loading, so it is not evidence of no execution.
+Inspect state before requesting another load.
 
-1. Deploy copies a readable regular file into a bounded snapshot, validates its
-   ELF with LIEF, and calculates SHA-256. It returns metadata and a read-only file
-   descriptor over AIDL; the temporary pathname is unlinked. Maximum size: 8 MiB.
-2. PosEdMCP reads and verifies that snapshot before confirmation. The normal
-   `ConfirmationGate.Kind.PLUGIN` policy displays the package, exact process,
-   source path, length, hash, entry and reason. No execution occurs in Deploy.
-3. After approval the exact peer must still be online. PosEdMCP transports the
-   approved bytes over its existing bridge; the target checks ELF and SHA-256
-   again. There is no automatic retargeting to another process or root fallback.
-4. In the scoped application, `libposednative.so` creates a sealed memfd and calls
-   `android_dlopen_ext(RTLD_NOW | RTLD_LOCAL)`. ELF constructors run as that app's
-   UID. Android linker namespace/dependency and SELinux restrictions still apply;
-   a loader failure is returned, not bypassed.
+Deploy 0.4.0 provides Capstone disassembly, native Ghidra 11.3.2 C pseudocode
+(little-endian AArch64 only), and Keystone assembly for ARM64/ARM/Thumb/x86/x64.
+Decompile selects one symbol/ELF address, budgets 1–20000 instructions (default
+4096), and runs in a private Deploy process with a 30-second work deadline.
+Types are inferred and import/relocation recovery is incomplete.
 
-This milestone accepts little-endian arm64 ET_DYN shared objects; PIE executables
-with an interpreter are rejected. System framework, PosEdMCP and Deploy are not
-targets of this new tool. `entry` is optional; when present it must be an exported
-**`int64_t function(void)`**. It is called on each approved request. `JNI_OnLoad`
-is not called automatically. A missing entry explicitly reports that the library
-has already been loaded. A timeout/crash can occur after constructors ran: inspect
-target state before requesting another load.
+`deploy_assemble` and `deploy_analyze_bytes` generate/decode bytes without target
+access. AIDL v2 appends these methods and advertises `status.apiVersion=2`.
+Live memory uses ASLR-adjusted runtime addresses, not ELF values or file offsets.
+The patch tool checks one 4-byte expected instruction in a private RX mapping,
+atomically replaces it, flushes instruction cache and restores page protection.
+Check `patched` and `permissionsRestored`. Existing execution is not paused;
+callers must avoid concurrent mapping unload. No multi-instruction patch or
+automatic rollback is provided. Restore with the original source and the new
+bytes as `expected`. A timeout/error may follow a write: inspect before retrying.
 
-Libraries are deduplicated by SHA-256 within a target process. They remain loaded
-until process exit; there is no unsafe automatic `dlclose` and no persisted hook
-registration. Changed code requires a new hash or a process restart. Required
-libraries must be available in the target's existing linker namespace.
+The real fixture returned 7 → 9 → 7 after patch and restoration, PID 12455,
+UID 10289. Five assembly/buffer modes passed roundtrip on the arm64 phone.
+Full evidence and commands are in Deploy `MILESTONE-0.4.md` and
+`tools/deploy-engines-smoke.py`; raw token-free reports remain local.
 
-This provides runtime native code loading. It does not yet implement persistent
-native hooks, inline/PLT trampolines, or an offline ELF rewriting/deployment tool.
-LIEF's [ELF Hooking tutorial](https://lief.re/doc/latest/tutorials/04_elf_hooking.html)
-adds code segments and changes symbols in an output file; that is a separate
-workflow. The [Runtime module](https://lief.re/doc/latest/runtime/intro.html)
-operates in the process hosting the library and does not itself grant Deploy
-access to a scoped application's process.
-
-## Device verification
-
-Build `:deploy:assembleDebug :app:assembleDebug :native-fixture:assembleDebug`.
-The fixture is a separate optional test APK, not included in either product APK.
-Install all three, put `libdeploy_fixture.so` from the fixture APK's
-`lib/arm64-v8a/` directory at `/sdcard/deploy-tests/`, and retain `/sdcard/libc.so`
-as a real-world sample. Start both MCP services.
-
-```text
-python tools/deploy-smoke.py --serial 3972b041 --output E:/deploy/smoke-analysis.json
-python tools/deploy-smoke.py --serial 3972b041 --output E:/deploy/smoke-runtime.json --load-fixture
-python tools/deploy-smoke.py --serial 3972b041 --output E:/deploy/smoke-isolation.json --isolation
-```
-
-For `--load-fixture`, enable **Deploy Native Fixture** in PosEdMCP's LSPosed/Vector
-scope, restart it and approve the ordinary application prompts when shown. The
-Activity has no loader/bridge of its own. The fixture's ELF constructor captures
-its process PID; the entry returns that captured value. The test compares it with
-the selected peer and checks a non-root UID. It also checks handle reuse and an
-entry returning 42, explicit missing-entry errors and offline target rejection.
-
-Tokens are kept in memory, never written to the JSON reports. Forwarding uses
-host ports 14177 and 18765; no other adb forwarding rules are removed.
-
-Verified on Xiaomi 24129PN74C (Android 15, arm64): direct MCP and AIDL disassembly
-including libc's `strlen`, error cases, and real scoped-process native loading.
-The first load returned PID 4416 from the constructor, matching the bridge peer,
-with UID 10289 and `loader=android_dlopen_ext_memfd`.
-
-The final descriptor ownership fix was also tested on the device, along with
-handle reuse, missing entry reporting and both isolated server configurations.
-Both apps were restored to their original enabled state and their services were
-restarted. On this ROM starting an unexported service immediately after restoring
-a stopped package can report "not found"; the test launches its Activity first.
-
-AArch64 is the architecture tested end to end. ARM/Thumb/x86/x64 decoders compile,
-but the supplementary device test timed out and its retry was rejected by the
-execution approval system ("blocked by policy", including after user approval).
-Those four targets remain unverified on the device. An occasional background
-HTTP timeout was observed; it was not diagnosed as a parser or loader failure.
+Special settings includes ColorOS/HyperOS “帮助Deploy”, disabled by default.
+The scripts use the existing ROM-specific cleaner sinks but match dev.deploy and
+its colon subprocesses only. Their ownership is independent from original guards;
+ordinary clear does not remove special hooks. New dedicated bridge operations
+require a newly loaded module in system_server, normally after reboot. Old peers
+reject them rather than overwrite an original guard. JVM registry/Lua regression
+is available via `tests/run-hooks.ps1`. New system_server behavior and ColorOS
+device behavior are not yet verified; no reboot or switch activation was performed.

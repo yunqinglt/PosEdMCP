@@ -162,6 +162,8 @@ public final class HookRegistry {
         /** The resolved member, when the signature identified exactly one. */
         final Executable target;
         final Deque<Record> records = new ArrayDeque<>();
+        final ThreadLocal<Deque<Record>> inFlight = ThreadLocal.withInitial(ArrayDeque::new);
+        String special = "";
         /** Why the caller-supplied body last failed, or null while it is healthy. */
         volatile String bodyError;
         volatile HookApi.Unhook unhook;
@@ -182,7 +184,7 @@ public final class HookRegistry {
         }
 
         String key() {
-            return className + "#" + methodName;
+            return className + "#" + methodName + (special.isEmpty() ? "" : "@special:" + special);
         }
     }
 
@@ -210,7 +212,7 @@ public final class HookRegistry {
      * the description a listing shows, since a rule has nothing to describe.
      */
     public static JSONObject installCustom(String className, String methodName, String paramTypes,
-            int maxRecords, Body body, String label, ClassLoader appClassLoader) throws Exception {
+            int maxRecords, Body body, String label, ClassLoader appClassLoader, String special) throws Exception {
         if (className == null || className.isEmpty()) {
             throw new IllegalArgumentException("class is required");
         }
@@ -222,6 +224,7 @@ public final class HookRegistry {
         }
         Entry entry = new Entry(className, methodName, cap(maxRecords), new Rule(), body, label,
                 resolveTarget(className, methodName, paramTypes, appClassLoader));
+        entry.special = special;
         return arm(entry, paramTypes, appClassLoader);
     }
 
@@ -338,12 +341,16 @@ public final class HookRegistry {
      * is the failure mode this whole module was rebuilt to avoid.
      */
     private static void runBody(Entry entry, HookApi.HookParam param, boolean after) {
+        Record previous = IN_FLIGHT.get();
+        IN_FLIGHT.set(entry.inFlight.get().peek());
         try {
             entry.body.call(param, after, entry.key());
             entry.bodyError = null;
         } catch (Throwable t) {
             entry.bodyError = t.getClass().getSimpleName()
                     + (t.getMessage() == null ? "" : ": " + t.getMessage());
+        } finally {
+            if (previous == null) IN_FLIGHT.remove(); else IN_FLIGHT.set(previous);
         }
     }
 
@@ -410,15 +417,16 @@ public final class HookRegistry {
      */
     private static void openRecordQuietly(Entry entry, HookApi.HookParam param) {
         try {
-            IN_FLIGHT.set(openRecord(entry, param));
+            entry.inFlight.get().push(openRecord(entry, param));
         } catch (Throwable t) {
             IN_FLIGHT.remove();
         }
     }
 
     private static void closeRecord(Entry entry, HookApi.HookParam param) {
-        Record record = IN_FLIGHT.get();
-        IN_FLIGHT.remove();
+        Deque<Record> stack = entry.inFlight.get();
+        Record record = stack.poll();
+        if (stack.isEmpty()) entry.inFlight.remove();
         if (record == null) {
             return;
         }
@@ -525,6 +533,10 @@ public final class HookRegistry {
     }
 
     public static JSONObject clear(String subject) throws Exception {
+        return clear(subject, "");
+    }
+
+    public static JSONObject clear(String subject, String special) throws Exception {
         String filter = subject == null ? "" : subject.toLowerCase(Locale.ROOT);
         JSONArray removed = new JSONArray();
         for (Iterator<Map.Entry<String, Entry>> it = HOOKS.entrySet().iterator(); it.hasNext(); ) {
@@ -533,6 +545,7 @@ public final class HookRegistry {
                 continue;
             }
             Entry entry = mapEntry.getValue();
+            if (!entry.special.equals(special)) continue;
             if (entry.unhook != null) {
                 try {
                     entry.unhook.unhook();

@@ -79,12 +79,13 @@ public final class HookDeploy {
             JSONObject args = new JSONObject();
             try {
                 args.put("source", hook.source);
+                args.put("special", hook.special);
                 args.put("max_instructions", LuaRuntime.DEFAULT_MAX_INSTRUCTIONS);
                 args.put("module_apk", moduleApk == null ? "" : moduleApk);
             } catch (Throwable t) {
                 throw new IOException(t);
             }
-            JSONObject result = bridge.request(peerKey, "lua_exec", args, TIMEOUT_MS);
+            JSONObject result = bridge.request(peerKey, hook.isSpecial() ? "special_hook" : "lua_exec", args, TIMEOUT_MS);
             // The bridge call succeeding only means the script was run. A script
             // that threw is a hook that is not armed, and the page has to say so
             // rather than show a tick it did not earn.
@@ -156,9 +157,12 @@ public final class HookDeploy {
     public static org.json.JSONArray clearFromAllProcesses(BridgeServer bridge, SavedHook hook) {
         JSONObject args = new JSONObject();
         try {
-            args.put("subject", hook.className + "#" + hook.methodName);
+            // One special switch can own multiple ROM countermeasures.
+            args.put("subject", hook.isSpecial() ? "" : hook.className + "#" + hook.methodName);
+            args.put("special", hook.special);
         } catch (Throwable ignored) {
         }
-        return bridge.requestAllProcesses(hook.packageName, "hook_clear", args, TIMEOUT_MS);
+        return bridge.requestAllProcesses(hook.packageName,
+                hook.isSpecial() ? "special_hook_clear" : "hook_clear", args, TIMEOUT_MS);
     }
 }

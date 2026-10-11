@@ -26,6 +26,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <errno.h>
+#include <stdlib.h>
 
 #define TAG "PosEdNative"
 
@@ -248,4 +249,79 @@ Java_dev_posedmcp_xposed_NativeRuntime_writeMemory(JNIEnv *env, jclass clazz, jl
     jsize length = (*env)->GetArrayLength(env, bytes);
     (*env)->GetByteArrayRegion(env, bytes, 0, length, (jbyte *) (intptr_t) address);
     return JNI_TRUE;
+}
+
+/* /proc/self/mem returns EIO for unmapped addresses instead of dereferencing an
+ * unchecked pointer. Verify read permission as procfs can otherwise bypass it. */
+static int memory_mapping(uintptr_t address, size_t size, int *protection, int *private_map) {
+    if (!address || size > UINTPTR_MAX - address) return 0;
+    FILE *maps = fopen("/proc/self/maps", "r");
+    if (!maps) return 0;
+    char line[1024], permissions[5]; unsigned long long begin, end;
+    int found = 0;
+    while (fgets(line, sizeof line, maps)) {
+        if (sscanf(line, "%llx-%llx %4s", &begin, &end, permissions) == 3
+                && address >= begin && address + size <= end) {
+            *protection = (permissions[0]=='r'?PROT_READ:0) | (permissions[1]=='w'?PROT_WRITE:0)
+                    | (permissions[2]=='x'?PROT_EXEC:0);
+            *private_map = permissions[3]=='p'; found=1; break;
+        }
+    }
+    fclose(maps); return found;
+}
+
+JNIEXPORT jbyteArray JNICALL
+Java_dev_posedmcp_xposed_NativeRuntime_readSnapshot(JNIEnv *env, jclass clazz, jlong value, jint length) {
+    uintptr_t address = (uintptr_t)value; int protection, private_map;
+    const char *failure = NULL; unsigned char bytes[4096];
+    if (length < 1 || length > sizeof bytes || !memory_mapping(address,length,&protection,&private_map)
+            || !(protection & PROT_READ)) failure="range is not inside one readable mapping";
+    else {
+        int fd=open("/proc/self/mem",O_RDONLY|O_CLOEXEC);
+        if(fd<0) failure="cannot open this process memory";
+        else {
+            ssize_t n; do { n=pread(fd,bytes,length,(off_t)address); } while(n<0 && errno==EINTR);
+            close(fd); if(n!=length) failure="memory mapping changed or read was incomplete";
+        }
+    }
+    if(failure) { (*env)->ThrowNew(env,(*env)->FindClass(env,"java/io/IOException"),failure); return NULL; }
+    jbyteArray out=(*env)->NewByteArray(env,length);
+    if(out) (*env)->SetByteArrayRegion(env,out,0,length,(jbyte*)bytes);
+    return out;
+}
+
+static pthread_mutex_t patch_lock = PTHREAD_MUTEX_INITIALIZER;
+JNIEXPORT jstring JNICALL
+Java_dev_posedmcp_xposed_NativeRuntime_patchInstruction(JNIEnv *env,jclass clazz,jlong value,
+        jbyteArray expected,jbyteArray replacement) {
+    uintptr_t address=(uintptr_t)value;
+    if(!expected || !replacement || (*env)->GetArrayLength(env,expected)!=4
+            || (*env)->GetArrayLength(env,replacement)!=4 || !address || address%4)
+        return load_error(env,"patch requires one aligned AArch64 instruction");
+    uint32_t before,after;
+    (*env)->GetByteArrayRegion(env,expected,0,4,(jbyte*)&before);
+    (*env)->GetByteArrayRegion(env,replacement,0,4,(jbyte*)&after);
+    if((*env)->ExceptionCheck(env))return NULL;
+    pthread_mutex_lock(&patch_lock);
+    int protection,private_map;
+    if(!memory_mapping(address,4,&protection,&private_map) || !private_map
+            || (protection&(PROT_READ|PROT_EXEC))!=(PROT_READ|PROT_EXEC)) {
+        pthread_mutex_unlock(&patch_lock); return load_error(env,"patch requires private readable executable memory");
+    }
+    long page_size=sysconf(_SC_PAGESIZE);
+    if(page_size<=0) { pthread_mutex_unlock(&patch_lock); return load_error(env,"cannot determine page size"); }
+    uintptr_t page=address & ~((uintptr_t)page_size-1);
+    if(mprotect((void*)page,page_size,protection|PROT_WRITE)!=0) {
+        pthread_mutex_unlock(&patch_lock); return load_error(env,"mprotect refused; no bytes were changed");
+    }
+    int changed=__atomic_compare_exchange_n((uint32_t*)address,&before,after,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST);
+    if(changed) __builtin___clear_cache((char*)address,(char*)address+4);
+    int restored=mprotect((void*)page,page_size,protection)==0;
+    pthread_mutex_unlock(&patch_lock);
+    char output[512];
+    snprintf(output,sizeof output,"{\"patched\":%s,\"permissionsRestored\":%s,\"address\":\"0x%llx\"%s}",
+            changed?"true":"false",restored?"true":"false",(unsigned long long)address,
+            !restored?",\"error\":\"page protection restore failed; inspect target state before retrying\"":
+            !changed?",\"error\":\"expected bytes mismatch; no bytes were changed\"":"");
+    return (*env)->NewStringUTF(env,output);
 }
