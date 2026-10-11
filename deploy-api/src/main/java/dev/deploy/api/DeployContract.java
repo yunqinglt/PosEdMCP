@@ -26,7 +26,12 @@ public final class DeployContract {
                         "metadata", "resolve", "disasm", "decompile"})));
         p.put("name", field("string", "Symbol name for resolve, disasm or decompile; mutually exclusive with address"));
         p.put("address", field("string", "ELF virtual address, hexadecimal 0x...; not a live process address"));
-        p.put("max", field("integer", "List limit; disasm default 64/max 512; decompile instruction budget default 4096/max 20000"));
+        p.put("max", field("integer", "List limit; disasm default 64/max 512; decompile instruction budget default 20000/max 100000"));
+        p.put("timeoutSeconds", field("integer", "Decompile deadline, default 30 seconds, range 1..120; timeout stops the worker"));
+        p.put("table", field("string", "Symbol tables, default all; preserves entries from each table")
+                .put("enum", new JSONArray(new String[]{"all", "dynamic", "static"})));
+        p.put("offset", field("integer", "Symbol page offset (after query filtering), default 0; follow nextOffset"));
+        p.put("query", field("string", "Case-sensitive symbol-name substring, maximum 512 characters"));
         p.put("bytes", field("integer", "Disasm byte window, maximum 4096; default symbol size or 256"));
         p.put("mode", field("string", "ARM32 only: auto (symbol low bit), arm, thumb")
                 .put("enum", new JSONArray(new String[]{"auto", "arm", "thumb"})));

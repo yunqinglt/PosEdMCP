@@ -248,7 +248,7 @@ APK 内的压缩条目。共享存储通常需要 Deploy 的“所有文件访�
 | op | 当前能力 |
 | --- | --- |
 | `overview`（默认） | 文件、ELF 位宽/大小端/架构/类型/入口及数量概览 |
-| `symbols` | 动态符号表，包含定义状态；当前不枚举完整普通符号表 |
+| `symbols` | 动态/静态符号表，含定义状态和 `(table,index)`，支持过滤和分页 |
 | `relocations` | ELF 重定位及关联符号，适合定位 PLT/GOT 线索 |
 | `strings` | 字符串表中长度至少 4 字节的条目，不扫描全文件字符串 |
 | `metadata` | ELF 头、解释器、依赖、节与段；当前无完整 build-id/notes 或加固评级 |
@@ -256,9 +256,16 @@ APK 内的压缩条目。共享存储通常需要 Deploy 的“所有文件访�
 | `disasm` | Capstone 指令级反汇编 |
 | `decompile` | Ghidra 11.3.2 C 风格伪代码，当前仅支持小端 AArch64 ELF |
 
-列表操作可传 `max`；检查 `truncated` / `limit`，目前没有游标或名称过滤参数。
+列表操作可传 `max`。`symbols` 支持分页和过滤；其余列表仍没有这些参数，应检查 `truncated` / `limit`。
 已知函数名直接 `resolve`，不要把截断结果或 `found:false` 当成整个文件没有符号。
 `defined:false` 是导入符号，不能拿其 `value` 当成本库代码入口。
+
+Deploy 的 `symbols` 参数支持 `table=all|dynamic|static`（默认 all）、名称子串 `query`、
+过滤后分页 `offset`（默认 0）和 `max`。每页也受传输大小限制，请跟随 `nextOffset`
+直到 null，以 `(table,index)` 区分同名条目。`staticSymbols=0` 表示没有静态符号表，
+不能据此恢复剥除的内部函数名；`defined=false` 表示外部导入，无本地函数体。
+反编译超过指令预算返回 `DECOMPILE_INSTRUCTION_LIMIT`，提高 `max` 或按 `nextAddress`
+继续分页读取 ASM；超时返回 `DECOMPILER_TIMEOUT`，不要把失败当成完整伪代码。
 
 例如，以下是 `deploy_analyze` 的 arguments，直接传入，不再包一层 `args`：
 
@@ -283,10 +290,10 @@ APK 内的压缩条目。共享存储通常需要 Deploy 的“所有文件访�
   按地址继续解码时需自行保留已知函数边界；GNU_IFUNC 地址是 resolver，未必是运行时实现。
   指令输出不能称为 C 伪代码，也不能证明代码已执行。
 
-伪代码同样用 `name` / ELF `address` 恰选一个，`max` 为指令预算（默认 4096，1–20000）。
+伪代码同样用 `name` / ELF `address` 恰选一个，`max` 为指令预算（默认 20000，1–100000）。
 读取 `pseudocode` / `warnings` / `note`，类型和原型是推断，未知类型会有占位名，
 不是原始源码。仅支持小端 AArch64；其他架构返回 `DECOMPILE_ARCH_UNSUPPORTED`。
-Deploy 私有进程执行 Ghidra，单次工作上限 30 秒，超时停止该进程并返回
+Deploy 私有进程执行 Ghidra，默认单次工作上限 30 秒，`timeoutSeconds` 可指定 1–120 秒，超时停止该进程并返回
 `DECOMPILER_TIMEOUT`；MCP 服务继续工作。当前没有完整跨库原型及重定位语义恢复。
 
 `deploy_assemble` 经 AIDL 调用 Keystone，必填 `arch` 和 `source`，可选 `address`
@@ -494,4 +501,3 @@ Deploy 分析和注入相关能力，不能把它解释为 PosEdMCP 的提权服
 # 语言
 
 用用户使用的语言回复。`reason` 字段也用那种语言写——它是写给用户看的。
-
