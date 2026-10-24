@@ -80,7 +80,7 @@ public final class RuntimePoliciesRegression {
         Framework.adoptLibXposed(loader -> hooks, "fixture");
         callStatic("dev.posedmcp.xposed.ScopeConcealment", "configure",
                 new Class<?>[]{ClassLoader.class, boolean.class}, RuntimePoliciesRegression.class.getClassLoader(), true);
-        check(hooks.callbacks.size() == 8, "register internal hook families");
+        check(hooks.callbacks.size() == 11, "register internal hook families");
         check(Class.forName("dev.posedmcp.xposed.HookRegistry") != null, "no registry dependency on policy calls");
         HookApi.Callback lookup = hooks.callbacks.get("java.lang.ClassLoader#loadClass");
         Param p = new Param(new ClassLoader(){}, null, "dev.posedmcp.HiddenApi");
@@ -95,6 +95,33 @@ public final class RuntimePoliciesRegression {
         Param traceOther = new Param(null, "example.app.Crash");
         hooks.callbacks.get("java.lang.StackTraceElement#getClassName").after(traceOther);
         check(traceOther.result.equals("example.app.Crash"), "retain application stack class");
+        for (String name : new String[]{"de.robv.android.xposed.XposedBridge",
+                "com.android.internal.os.ZygoteInit", "com.android.internal.os.ZygoteInit$MethodAndArgsCaller"}) {
+            StackTraceElement frame = new StackTraceElement(name, "handleHookedMethod", "XposedBridge.java", 42);
+            Param clazz = new Param(frame, name);
+            hooks.callbacks.get("java.lang.StackTraceElement#getClassName").after(clazz);
+            check(clazz.result.equals("android.os.Handler"), "hide stack-only class " + name);
+            for (String getter : new String[]{"getMethodName", "getFileName", "toString"}) {
+                Param value = new Param(frame, getter.equals("getMethodName") ? frame.getMethodName()
+                        : getter.equals("getFileName") ? frame.getFileName() : frame.toString());
+                hooks.callbacks.get("java.lang.StackTraceElement#" + getter).after(value);
+                check(!value.result.toString().contains("Xposed") && !value.result.toString().contains("Zygote")
+                        && !value.result.toString().contains("handleHookedMethod"), "coherent stack " + getter);
+                if (getter.equals("toString")) check(value.result.equals(
+                        "android.os.Handler.dispatchMessage(Handler.java:42)"), "stack representation retains line semantics");
+            }
+        }
+        Param zygoteClass = new Param(new ClassLoader(){}, null, "com.android.internal.os.ZygoteInit");
+        lookup.before(zygoteClass);
+        check(zygoteClass.thrown == null, "Zygote stack rule never hides a platform class lookup");
+        Param ownMethod = new Param(new StackTraceElement("example.app.Crash", "handleHookedMethod", "Own.java", 1),
+                "handleHookedMethod");
+        hooks.callbacks.get("java.lang.StackTraceElement#getMethodName").after(ownMethod);
+        check(ownMethod.result.equals("handleHookedMethod"), "retain coincidentally named app method");
+        for (String jar : new String[]{"XposedBridge.jar", "XPOSEDBRIDGE.JAR"}) {
+            check((Boolean)callStatic("dev.posedmcp.xposed.ScopeConcealment", "hiddenMap",
+                    new Class<?>[]{String.class}, "7000-8000 r-xp /system/framework/" + jar), "bridge jar maps " + jar);
+        }
         Method javaMethod = String.class.getDeclaredMethod("isEmpty");
         Method jni = Object.class.getDeclaredMethod("hashCode");
         callStatic("dev.posedmcp.xposed.HookVisibility", "note", new Class<?>[]{Method.class}, javaMethod);
@@ -124,6 +151,9 @@ public final class RuntimePoliciesRegression {
                 new Class<?>[]{ClassLoader.class, boolean.class}, RuntimePoliciesRegression.class.getClassLoader(), false);
         Param off = new Param(new ClassLoader(){}, null, "dev.posedmcp.HiddenApi");
         lookup.before(off); check(off.thrown == null, "disable takes effect");
+        Param offStack = new Param(new StackTraceElement("com.android.internal.os.ZygoteInit", "main", "ZygoteInit.java", 1), "main");
+        hooks.callbacks.get("java.lang.StackTraceElement#getMethodName").after(offStack);
+        check(offStack.result.equals("main"), "disabled stack method unchanged");
     }
     static int proceeds;
     static Object invokeAdapter(HookApi.Callback callback, Object result, Throwable original) throws Throwable {

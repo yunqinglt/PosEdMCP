@@ -8,10 +8,11 @@ try {
     $xposedJar = Get-ChildItem .gradle-home/caches/modules-2/files-2.1/de.robv.android.xposed/api/82 -Recurse -Filter '*.jar' | Select-Object -First 1 -ExpandProperty FullName
     if (!$apiJar) { throw 'Build the app first to resolve the libxposed API' }
     $classpath = "$jsonJar;$apiJar;$xposedJar"
-    $sources = @('tests/RuntimePoliciesRegression.java', 'tests/BootstrapRegression.java',
+    $sources = @('tests/RuntimePoliciesRegression.java', 'tests/BootstrapRegression.java', 'tests/PackageVisibilityRegression.java',
         'tests/stubs/android/os/Process.java', 'tests/stubs/android/os/Bundle.java',
         'tests/stubs/android/content/Context.java', 'tests/stubs/android/content/pm/ApplicationInfo.java',
         'tests/stubs/android/content/pm/PackageManager.java', 'tests/stubs/android/util/AtomicFile.java',
+        'tests/stubs/android/content/pm/ParceledListSlice.java',
         'tests/stubs/dev/posedmcp/state/Prefs.java', 'tests/stubs/dev/posedmcp/state/RuntimePolicy.java',
         'tests/stubs/dev/posedmcp/state/HookStore.java',
         'tests/stubs/dev/posedmcp/ipc/FrameworkPreferencesProvider.java',
@@ -23,6 +24,9 @@ try {
         'app/src/main/java/dev/posedmcp/xposed/HookRegistry.java',
         'app/src/main/java/dev/posedmcp/diagnostics/DiagnosticRedactor.java',
         'app/src/main/java/dev/posedmcp/xposed/ScopeConcealment.java',
+        'app/src/main/java/dev/posedmcp/xposed/ConcealmentPackages.java',
+        'app/src/main/java/dev/posedmcp/xposed/PackageConcealment.java',
+        'app/src/main/java/dev/posedmcp/xposed/PackageListFilter.java',
         'app/src/main/java/dev/posedmcp/xposed/HookVisibility.java',
         'app/src/main/java/dev/posedmcp/xposed/Framework.java',
         'app/src/main/java/dev/posedmcp/xposed/XposedHookApi.java',
@@ -32,6 +36,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Compilation failed' }
     & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.RuntimePoliciesRegression
     if ($LASTEXITCODE -ne 0) { throw 'Runtime policy regression failed' }
+    & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.PackageVisibilityRegression
+    if ($LASTEXITCODE -ne 0) { throw 'Package visibility regression failed' }
     & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.BootstrapRegression
     if ($LASTEXITCODE -ne 0) { throw 'Bootstrap regression failed' }
     $compiler = (Get-Command gcc -ErrorAction Stop).Source
@@ -54,4 +60,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native matcher compilation failed' }
     & ./.tools/runtime-test-classes/dns_rules_test.exe
     if ($LASTEXITCODE -ne 0) { throw 'Native matcher regression failed' }
+    & $compiler @compilerArgs -std=c11 -Wall -Wextra -Werror tests/package_paths_test.c -o .tools/runtime-test-classes/package_paths_test.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Native package path compilation failed' }
+    & ./.tools/runtime-test-classes/package_paths_test.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Native package path regression failed' }
 } finally { Pop-Location }

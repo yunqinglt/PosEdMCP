@@ -385,6 +385,7 @@ public class MainActivity extends AppCompatActivity {
         concealment.setText(R.string.scope_concealment);
         concealment.setChecked(policy.optBoolean("concealment", true));
         content.addView(concealment);
+        content.addView(body(getString(R.string.scope_concealment_body)));
         MaterialSwitch dns = new MaterialSwitch(this);
         dns.setText(R.string.scope_ad_dns);
         dns.setChecked(policy.optBoolean("ad_dns_enabled", false));

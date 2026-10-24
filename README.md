@@ -6,6 +6,8 @@ Companion apps: [Deploy](https://github.com/yunqinglt/Deploy) for native analysi
 
 Long-term feedback and future ad SDK strategy plans: [development memory](docs/DEVELOPMENT_MEMORY.md). Version 1.1.7 adds an independent bootstrap process, diagnostic ZIP export, scope concealment and configurable native DNS filtering.
 
+Version 1.1.8 upgrades [scope concealment](docs/CONCEALMENT.md) with consistent package visibility, native package-directory probes, bridge JAR maps and stack method names.
+
 An MCP server for an agent running on the Android device itself. An LSPosed module plus a
 root shell, so an agent living *on the phone* can actually operate the phone.
 

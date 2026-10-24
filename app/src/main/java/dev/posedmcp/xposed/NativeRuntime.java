@@ -165,6 +165,8 @@ public final class NativeRuntime {
 
     static native String configureAdDns(String[] domains);
     static native String adDnsStatus();
+    static native String configureConcealmentFiles(String[] packages);
+    static native String concealmentFilesStatus();
 
     static native String lastError();
 

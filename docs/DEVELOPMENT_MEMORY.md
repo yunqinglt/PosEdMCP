@@ -2,6 +2,31 @@
 
 更新：2026-10-24。用户长期使用反馈，后续开发需延续。
 
+## 1.1.8 隐藏策略升级
+
+用户补充要求：maps 漏掉 XposedBridge.jar、已获安装列表授权后的包隐藏、ApplistDetector 的旁路入口、
+堆栈 getMethodName 及标准类名 com.android.internal.os.ZygoteInit。误拼别名不保留。
+用户确认范围：PosEdMCP、Display、Deploy 与常见框架管理器，保留目标应用自身。
+
+- maps 跟踪 reader 中补充大小写不敏感的 XposedBridge.jar。
+- 堆栈类名、方法名、文件名和 toString 成组处理，保留行号语义；ZygoteInit 及内部类仅在堆栈名单，
+  不加入 ClassLoader 禁止名单，真实 JNI 位保留。
+- 保留真实 Context/PackageManager 和权限，对具体 PM、厂商覆盖与 IPackageManager 代理过滤，
+  覆盖列表、Intent、安装来源、单包存在性、UID 及启动入口；不修改原缓存列表/对象。
+- Runtime/ProcessBuilder 的普通 pm/cmd 包列表命令使用 stdout 字节流过滤，保留 stderr/退出码/生命周期。
+- 框架提供的 native hook 接入 10 个 libc 文件入口及导出的 syscall 包装函数，选定目录使用 ENOENT；
+  syscall 使用 arm64 汇编保留原参数寄存器，未读取未知个数的 C 可变参数。
+- 原生过滤和 Java 内部策略仍独立于普通 HookRegistry；scope_status 新增 packages/files 状态。
+- Android 16 / LSPosed 1.10.2 开关对照、反射代理、桥接 JAR 原生映射控制、原生调用命中计数和自身控制例通过。
+  此 ROM 关闭基线的普通安装列表与部分目录探测本身已受限，不能归功于本模块。
+- 新增与扩展的主机回归覆盖生产回调、流与路径归一化；完整范围及未覆盖路径见 [CONCEALMENT.md](CONCEALMENT.md)。
+  未替换/修改 ApplistDetector 返回值，按固定提交源码对照入口，不承诺整个检测器全部通过。
+- 最终主机回归 118 项断言通过，旧钩子脚本回归通过，assembleDebug/lintDebug 完成（0 error）。
+  APK 已通过签名校验并装机；Java/PM/native 钩子分别 12/87/10 个，安装失败均为 0。
+  最终真机断言保留行号，测试后恢复原测试 APK、原策略和无障碍状态，核对 boot ID 未变化。
+
+保留不重启设备的要求。独立广告策略页面、SDK 精准策略和策略导出仍为后续计划。
+
 ## 本轮反馈与实现
 
 1. 单独启动作用域应用时，凭据/钩子库查询会拉起 PosEdMCP 主进程，导致启动钩子到得太晚。

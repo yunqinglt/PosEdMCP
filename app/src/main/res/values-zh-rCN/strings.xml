@@ -313,6 +313,7 @@
     <string name="scope_policy_title">作用域应用策略</string>
     <string name="scope_policy_body">适用于模块作用域内第三方应用的内置钩子，独立于「钩子」库。保存后重启目标应用生效；系统应用和系统框架不启用这些策略。</string>
     <string name="scope_concealment">隐藏作用域应用中的模块痕迹</string>
+    <string name="scope_concealment_body">从安装列表、单包探测、包列表命令输出及受支持的原生目录探测中隐藏 PosEdMCP、Display、Deploy 和常见框架管理器，保留作用域应用自身。同时处理模块/zygote 堆栈与桥接 JAR 映射行。不撤销应用权限；原生过滤需要框架支持。</string>
     <string name="scope_ad_dns">过滤广告域名解析</string>
     <string name="scope_ad_dns_body">通过 libc getaddrinfo 过滤手动配置的域名。普通域名仅精确匹配，*.example.com 仅匹配子域名。不附带域名列表；共用域名可能同时承载正常功能。需要框架提供原生钩子接口，不覆盖自建 DNS、直连 IP 或已有连接。</string>
     <string name="scope_domain_hint">每行一个域名，例如 ads.example.com</string>

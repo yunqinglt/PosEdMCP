@@ -8,17 +8,10 @@
 #include <netdb.h>
 #include <dlfcn.h>
 #include "dns_rules.h"
+#include "native_hooks.h"
 
 /* LSPosed's native hook ABI; no inline patcher or instruction relocation here.
  * https://github.com/LSPosed/LSPosed/wiki/Native-Hook */
-typedef int (*HookFunType)(void *, void *, void **);
-typedef void (*NativeOnModuleLoaded)(const char *, void *);
-typedef struct {
-    uint32_t version;
-    HookFunType hook_func;
-    int (*unhook_func)(void *);
-} NativeAPIEntries;
-
 static HookFunType framework_hook;
 static int (*original_getaddrinfo)(const char *, const char *, const struct addrinfo *, struct addrinfo **);
 static pthread_mutex_t install_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -65,6 +58,7 @@ static void install_filter(void) {
 static void library_loaded(const char *name, void *handle) {
     (void)name; (void)handle;
     install_filter();
+    concealment_install();
 }
 
 __attribute__((visibility("default"), used))
@@ -72,6 +66,7 @@ NativeOnModuleLoaded native_init(const NativeAPIEntries *entries) {
     pthread_mutex_lock(&install_lock);
     if (entries && entries->version >= 1) framework_hook = entries->hook_func;
     pthread_mutex_unlock(&install_lock);
+    concealment_hook_api(entries && entries->version >= 1 ? entries->hook_func : NULL);
     // Capture only. Java configures the filter inside an allowed app scope.
     return library_loaded;
 }

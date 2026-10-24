@@ -204,7 +204,7 @@ public final class AppHost {
             bridge.registerHandler("probe_snapshot", args -> ProbeOps.threadSnapshot());
             bridge.registerHandler("diagnostics", args -> new JSONObject()
                     .put("framework", Framework.describe()).put("log", Logx.recent())
-                    .put("builtins", ScopeConcealment.status()).put("adDns", AdDnsPolicy.status()));
+                    .put("builtins", builtinStatus()).put("adDns", AdDnsPolicy.status()));
             bridge.registerHandler("ping", args -> new JSONObject().put("pong", true)
                     .put("moduleVersion", dev.posedmcp.BuildConfig.VERSION_NAME)
                     // Which hook framework loaded us, and therefore which HookApi
@@ -215,7 +215,7 @@ public final class AppHost {
                     // asking it would mean loading classes that are not there.
                     .put("framework", Framework.describe())
                     .put("hooks", HookRegistry.snapshot().size())
-                    .put("builtins", ScopeConcealment.status())
+                    .put("builtins", builtinStatus())
                     .put("adDns", AdDnsPolicy.status()));
             bridge.start();
             client = bridge;
@@ -243,11 +243,19 @@ public final class AppHost {
                 & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) return;
         try {
             JSONObject policy = new JSONObject(raw);
-            ScopeConcealment.configure(loader, policy.optBoolean("concealment", true));
+            boolean conceal = policy.optBoolean("concealment", true);
+            ScopeConcealment.configure(loader, conceal);
+            PackageConcealment.configure(loader, conceal, pkg);
+            NativeFileConcealment.configure(conceal, pkg);
             AdDnsPolicy.configure(policy);
         } catch (Throwable t) {
             Logx.w("built-in scope policy failed for " + pkg + ": " + t);
         }
+    }
+
+    private static JSONObject builtinStatus() throws org.json.JSONException {
+        return ScopeConcealment.status().put("packages", PackageConcealment.status())
+                .put("files", NativeFileConcealment.status());
     }
 
     public static void emit(String type, JSONObject data) {

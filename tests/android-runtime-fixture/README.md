@@ -20,6 +20,16 @@ Wait for `result.json` to contain the current process PID before reading asserti
 - With concealment enabled, `hiddenStack` must be `android.os.Handler`, `ownStack` must retain the
   fixture's name, and `classProbe` must be `hidden`. The marker class is included in the fixture APK:
   disabling the policy must change the probe to `visible`.
+- This APK declares QUERY_ALL_PACKAGES. Compare enabled/disabled results for named PM probes,
+  Intent queries, install source, launch intents and the reflected IPackageManager proxy. Keep the
+  original PackageManager instance and the target's own visibility. For UID reverse lookup, pass
+  `--ei hidden_uid UID` to `am start` using the installed PosEdMCP UID.
+- `zygoteClass/Method/File/String` must agree after rewriting; `zygoteClassLoadable` stays true.
+  Native mmap creates an actual XposedBridge.jar control line: `nativeBridgeJarMaps` is positive,
+  `javaBridgeJarMaps` is zero only when concealment is enabled.
+- Check `nativeHiddenFiles` with the native hook hit counter, `nativeOwnFiles` still succeeding,
+  and unrelated native getpid calls returning the target PID. An OS may already return ENOENT
+  for foreign directories without these hooks; preserve the disabled baseline in the evidence.
 - `javaNativeBit` and the hooked `sentinelNativeBit` must be false; `jniNativeBit` must stay true.
 - When the module native library is loaded, `nativeModuleMaps` must be positive while
   `javaModuleMaps` is zero. `ordinaryReader` must stay `libposednative.so|keep|null`.

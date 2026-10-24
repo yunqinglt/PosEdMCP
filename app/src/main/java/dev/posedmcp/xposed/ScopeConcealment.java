@@ -37,7 +37,26 @@ final class ScopeConcealment {
         return value.contains("/dev.posedmcp-") || value.contains("/dev.posedmcp/")
                 || value.contains("libposednative.so") || value.contains("lspd")
                 || value.contains("lsposed") || value.contains("libxposed")
+                || value.contains("xposedbridge.jar")
                 || value.contains("memfd:posedmcp");
+    }
+
+    // ZygoteInit is a real platform class. Restrict this rule to stack views;
+    // hiding it from ClassLoader would break legitimate framework code.
+    static boolean hiddenStackClass(String name) {
+        return hiddenClass(name) || "com.android.internal.os.ZygoteInit".equals(name)
+                || (name != null && name.startsWith("com.android.internal.os.ZygoteInit$"));
+    }
+
+    static boolean externalCaller() {
+        return enabled && !BYPASS.get() && !internalCaller();
+    }
+
+    private static boolean hiddenFrame(Object value) {
+        if (!(value instanceof StackTraceElement)) return false;
+        BYPASS.set(true);
+        try { return hiddenStackClass(((StackTraceElement) value).getClassName()); }
+        finally { BYPASS.remove(); }
     }
 
     static boolean mapsPath(Object arg) {
@@ -92,11 +111,26 @@ final class ScopeConcealment {
                     new HookApi.Callback() {
                         @Override public void after(HookApi.HookParam p) {
                             if (enabled && !BYPASS.get() && p.throwable() == null
-                                    && hiddenClass((String) p.result()) && !internalCaller()) {
+                                    && hiddenStackClass((String) p.result()) && !internalCaller()) {
                                 p.setResult("android.os.Handler");
                             }
                         }
                     });
+            for (String name : new String[]{"getMethodName", "getFileName", "toString"}) {
+                final String replacement = name.equals("getMethodName") ? "dispatchMessage"
+                        : name.equals("getFileName") ? "Handler.java"
+                        : "android.os.Handler.dispatchMessage(Handler.java)";
+                install(api, StackTraceElement.class, name, new Class<?>[0], new HookApi.Callback() {
+                    @Override public void after(HookApi.HookParam p) {
+                        if (enabled && !BYPASS.get() && p.throwable() == null
+                                && hiddenFrame(p.thisObject()) && !internalCaller()) {
+                            p.setResult(name.equals("toString") ? new StackTraceElement(
+                                    "android.os.Handler", "dispatchMessage", "Handler.java",
+                                    ((StackTraceElement) p.thisObject()).getLineNumber()).toString() : replacement);
+                        }
+                    }
+                });
+            }
             install(api, ClassLoader.class, "loadClass", new Class<?>[]{String.class}, classLookup());
             install(api, ClassLoader.class, "loadClass", new Class<?>[]{String.class, boolean.class},
                     classLookup());
@@ -140,13 +174,16 @@ final class ScopeConcealment {
             for (StackTraceElement frame : new Throwable().getStackTrace()) {
                 String name = frame.getClassName();
                 if (name.equals(ScopeConcealment.class.getName())
-                        || name.startsWith(ScopeConcealment.class.getName() + "$")) continue;
+                        || name.startsWith(ScopeConcealment.class.getName() + "$")
+                        || name.startsWith("dev.posedmcp.xposed.PackageConcealment")
+                        || name.startsWith("dev.posedmcp.xposed.PackageListFilter")) continue;
                 // Framework adapters are on every call; find the actual caller.
                 if (name.startsWith("dev.posedmcp.xposed.XposedHookApi")
                         || name.startsWith("dev.posedmcp.xposed.LibXposedHookApi")
                         || name.startsWith("de.robv.android.xposed.")
                         || name.startsWith("org.lsposed.") || name.startsWith("io.github.libxposed.")
-                        || name.startsWith("java.") || name.startsWith("dalvik.")) continue;
+                        || name.startsWith("java.") || name.startsWith("dalvik.")
+                        || name.startsWith("android.") || name.startsWith("com.android.internal.")) continue;
                 return name.startsWith("dev.posedmcp.");
             }
             return false;

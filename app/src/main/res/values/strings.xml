@@ -308,6 +308,7 @@ Once it is on, it can be paused here at any time but not deleted - and the rescu
     <string name="scope_policy_title">SCOPED APP POLICIES</string>
     <string name="scope_policy_body">Built-in hooks for third-party apps in the module scope. These are separate from your Hooks library. Save, then restart the affected apps. System apps and the system framework are excluded.</string>
     <string name="scope_concealment">Hide module traces in scoped apps</string>
+    <string name="scope_concealment_body">Hides PosEdMCP, Display, Deploy and common framework managers from package lists, package probes, package-list command output and supported native directory probes. Keeps the scoped app itself visible. Also masks module/zygote stack frames and bridge JAR maps lines. Does not revoke app permissions. Native filtering requires framework support.</string>
     <string name="scope_ad_dns">Filter advertising DNS names</string>
     <string name="scope_ad_dns_body">Filters libc getaddrinfo using your domain rules. Exact domains match only that name; *.example.com matches subdomains only. No built-in domain list. Shared domains may also serve app features. Requires framework native hook support; custom DNS, direct IPs and existing connections are outside this filter.</string>
     <string name="scope_domain_hint">One domain per line, e.g. ads.example.com</string>

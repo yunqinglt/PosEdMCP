@@ -26,6 +26,10 @@ and token redaction. A host GCC runs the actual C DNS matcher. Windows WinLibs i
 a Unicode home path uses an ignored local junction and explicit linker prefixes.
 Platform fixtures live under `tests/stubs` and are never part of the app APK.
 
+Package visibility checks execute production PM callbacks and stdout filtering with mixed UID arrays,
+immutable lists, Binder slices, original permission exceptions and policy toggles. GCC also executes
+the native package-path matcher, including exact package boundaries and relative path normalization.
+
 The hook suite also runs the bridge Athena preset, checking its Hans importance
 exemption for the bridge and subprocesses, and rejecting similar or unrelated packages.
 

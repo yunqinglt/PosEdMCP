@@ -5,8 +5,17 @@ public final class Results {
  static { System.loadLibrary("runtimefixture"); }
  public static native int resolve(String host,boolean numericOnly);
  public static native String rawMaps();
+ public static native void createJarMappings();
+ public static native String probeFiles(String path);
  public static JSONObject collect(android.content.Context c) throws Exception {
  JSONObject r=new JSONObject(); r.put("pid",android.os.Process.myPid()).put("provider",providerValue).put("application",applicationValue).put("providerTime",providerTime);
+ createJarMappings();
+ r.put("packageVisibility",PackageProbe.collect(c));
+ r.put("nativeHiddenFiles",new JSONObject(probeFiles("/data/data/dev.posedmcp")));
+ r.put("nativeOwnFiles",new JSONObject(probeFiles(c.getFilesDir().getAbsolutePath())));
+ StackTraceElement z=new StackTraceElement("com.android.internal.os.ZygoteInit","main","ZygoteInit.java",42);
+ r.put("zygoteClass",z.getClassName()).put("zygoteMethod",z.getMethodName()).put("zygoteFile",z.getFileName()).put("zygoteString",z.toString());
+ r.put("zygoteClassLoadable",Class.forName("com.android.internal.os.ZygoteInit")!=null);
  r.put("hiddenStack",new StackTraceElement("dev.posedmcp.xposed.AppHost","install","AppHost.java",1).getClassName());
  r.put("ownStack",new StackTraceElement("dev.deploy.fixture.Results","collect","Results.java",1).getClassName());
  try { c.getClassLoader().loadClass("dev.posedmcp.fixture.VisibleMarker"); r.put("classProbe","visible"); } catch (ClassNotFoundException e) { r.put("classProbe","hidden"); }
@@ -15,8 +24,10 @@ public final class Results {
  r.put("jniNativeBit",Modifier.isNative(Results.class.getDeclaredMethod("resolve",String.class,boolean.class).getModifiers()));
  StringBuilder maps=new StringBuilder(); try(BufferedReader b=new BufferedReader(new FileReader("/proc/self/maps"))) { String line; while((line=b.readLine())!=null) maps.append(line).append('\n'); }
  r.put("javaModuleMaps",count(maps.toString())).put("nativeModuleMaps",count(rawMaps()));
+ r.put("javaBridgeJarMaps",jarCount(maps.toString())).put("nativeBridgeJarMaps",jarCount(rawMaps()));
  try(BufferedReader b=new BufferedReader(new StringReader("libposednative.so\nkeep\n"))) { r.put("ordinaryReader",b.readLine()+"|"+b.readLine()+"|"+b.readLine()); }
  r.put("dnsExact",resolve("example.com",false)).put("dnsWildcard",resolve("ad.ads.example.com",false)).put("dnsNumeric",resolve("127.0.0.1",true)).put("dnsLocalhost",resolve("localhost",false));
  return r; }
  static int count(String s) { int n=0; for(String l:s.split("\n")) if(l.contains("dev.posedmcp-")||l.contains("libposednative.so")||l.toLowerCase().contains("lsposed")) n++; return n; }
+ static int jarCount(String s) { int n=0; for(String l:s.toLowerCase(java.util.Locale.ROOT).split("\n")) if(l.contains("xposedbridge.jar")) n++; return n; }
 }
