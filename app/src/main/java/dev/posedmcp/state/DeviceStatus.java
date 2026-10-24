@@ -11,15 +11,12 @@ import dev.posedmcp.root.RootShell;
  * Facts about the device and the module that are expensive or intrusive to
  * re-derive on every call.
  *
- * <p>The root probe runs {@code su -c id} once, when the user starts the
+ * <p>The libsu probe verifies the available shell once, when the user starts the
  * service. It is deliberately not exposed as a tool: an agent must not be able
  * to trigger a root shell outside the confirmation gate, not even a harmless
  * one, or the gate stops meaning anything.
  */
 public final class DeviceStatus {
-
-    private static volatile Boolean rootAvailable;
-    private static volatile long probedAt;
 
     private DeviceStatus() {
     }
@@ -27,15 +24,10 @@ public final class DeviceStatus {
     public static void probeRootAsync() {
         Thread t = new Thread(() -> {
             boolean available = RootShell.isAvailable();
-            rootAvailable = available;
-            probedAt = System.currentTimeMillis();
             if (available) {
                 Logx.i("root probe: available via " + RootShell.suPath());
             } else {
-                Logx.w("root probe: unavailable via " + RootShell.suPath()
-                        + ". Most common cause: the root manager hides su from apps"
-                        + " (Magisk SuList / \"hide\" mode). Add PosEdMCP to the allow list"
-                        + " or turn that mode off, then restart the service.");
+                Logx.i("root unavailable; libsu application-shell fallback remains available when reported by health");
             }
         }, "posedmcp-root-probe");
         t.setDaemon(true);
@@ -54,11 +46,10 @@ public final class DeviceStatus {
             o.put("supportedAbis", String.join(",", Build.SUPPORTED_ABIS));
             o.put("buildId", Build.DISPLAY);
 
-            Boolean root = rootAvailable;
-            o.put("rootAvailable", root == null ? JSONObject.NULL : root);
-            if (root != null) {
-                o.put("rootProbedAt", probedAt);
-            }
+            JSONObject current = RootShell.permissionJson();
+            o.put("rootAvailable", current.opt("rootGranted"));
+            o.put("rootProbedAt", current.optLong("checkedAt"));
+            o.put("shell", current);
             o.put("suPath", RootShell.suPath());
         } catch (Throwable ignored) {
         }
@@ -66,13 +57,12 @@ public final class DeviceStatus {
     }
 
     public static JSONObject rootJson() {
-        JSONObject o = new JSONObject();
+        JSONObject o = RootShell.permissionJson();
         try {
-            Boolean root = rootAvailable;
-            o.put("available", root == null ? JSONObject.NULL : root);
+            o.put("available", o.opt("rootGranted"));
             o.put("suPath", RootShell.suPath());
-            o.put("note", "Probed once when the MCP service started. Individual commands are"
-                    + " always confirmed regardless of this value.");
+            o.put("note", "Permission is last verified at service start or shell execution. Health queries never request root."
+                    + " Root-only tools fail without root; shell_exec permits app-UID execution after confirmation.");
             o.put("diagnostics", RootShell.diagnostics());
         } catch (Throwable ignored) {
         }

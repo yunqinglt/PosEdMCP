@@ -1,275 +1,209 @@
 package dev.posedmcp.root;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
+import android.content.Context;
+import com.topjohnwu.superuser.Shell;
+import dev.posedmcp.Logx;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import org.json.JSONObject;
 
-import dev.posedmcp.Logx;
-
-/**
- * Runs a command as root through {@code su}.
- *
- * <p>This class deliberately has no policy of its own: it executes whatever it
- * is given. Every caller must go through {@link ConfirmationGate} first, which
- * is the only thing standing between an agent and an unconfirmed root shell.
- *
- * <p>Note that {@code su} is invoked with piped stdio rather than through a
- * pseudo-terminal, because a pty rewrites {@code \n} to {@code \r\n} and
- * corrupts binary output such as {@code screencap}.
- */
+/** Dedicated libsu sessions. Root-only callers never silently run with app privileges. */
 public final class RootShell {
-
-    /** Cap on each captured stream, so one runaway command cannot exhaust memory. */
     public static final int MAX_STREAM_BYTES = 1 << 20;
+    private static volatile Context context;
+    private static volatile Permission permission = new Permission(null, null, -1, 0, null);
 
-    private static volatile String suPath;
-    private static volatile String lastProbeError;
-
-    private RootShell() {
+    private static final class Permission {
+        final Boolean root, shell;
+        final int uid;
+        final long checkedAt;
+        final String error;
+        Permission(Boolean root, Boolean shell, int uid, long checkedAt, String error) {
+            this.root = root; this.shell = shell; this.uid = uid;
+            this.checkedAt = checkedAt; this.error = error;
+        }
     }
+
+    public static void initialize(Context app) { context = app.getApplicationContext(); }
 
     public static final class Result {
         public final int exitCode;
-        public final String stdout;
-        public final String stderr;
-        public final boolean timedOut;
+        public final String stdout, stderr, command;
+        public final boolean timedOut, root;
+        public final int uid;
         public final long durationMs;
-        public final String command;
-
-        Result(String command, int exitCode, String stdout, String stderr, boolean timedOut,
-                long durationMs) {
-            this.command = command;
-            this.exitCode = exitCode;
-            this.stdout = stdout;
-            this.stderr = stderr;
-            this.timedOut = timedOut;
-            this.durationMs = durationMs;
+        Result(String command, int exit, byte[] out, String err, boolean timeout, long duration,
+                boolean root, int uid) {
+            this.command = command; exitCode = exit; stdout = new String(out, StandardCharsets.UTF_8);
+            stderr = err; timedOut = timeout; durationMs = duration; this.root = root; this.uid = uid;
         }
-
-        public boolean ok() {
-            return !timedOut && exitCode == 0;
-        }
+        public boolean ok() { return !timedOut && exitCode == 0; }
     }
 
-    /** Resolves the su binary once per process. */
-    public static String suPath() {
-        String cached = suPath;
-        if (cached != null) {
-            return cached;
-        }
-        String[] candidates = {
-                "/system/bin/su", "/system/xbin/su", "/sbin/su",
-                "/debug_ramdisk/su", "/system/bin/magisk",
-        };
-        for (String c : candidates) {
-            if (new File(c).exists()) {
-                Logx.i("su resolved to " + c);
-                suPath = c;
-                return c;
-            }
-        }
-        // Magisk hides its mounts from many app processes, so the symlink can be
-        // invisible here even though a PATH lookup still resolves it.
-        Logx.w("no su at a known path; falling back to PATH lookup for \"su\"");
-        suPath = "su";
-        return "su";
-    }
+    public static String suPath() { return "libsu"; }
 
-    /** True when {@code su} actually hands back uid 0. */
+    /** Called only during user-started service initialization, never by GET /health. */
     public static boolean isAvailable() {
+        Result result = execute("/system/bin/id -u", 15_000L, false, false, 4096).result;
+        return result.ok() && result.root;
+    }
+
+    /** No shell construction, command execution or root authorization from a status request. */
+    public static JSONObject permissionJson() {
+        Permission p = permission;
+        JSONObject out = new JSONObject();
         try {
-            Result r = execRaw("id", 15_000L);
-            boolean ok = r.stdout.contains("uid=0");
-            if (!ok) {
-                lastProbeError = "exit=" + r.exitCode
-                        + " stdout=[" + trim(r.stdout) + "] stderr=[" + trim(r.stderr) + "]";
-                Logx.w("root probe failed: " + lastProbeError);
-            } else {
-                lastProbeError = null;
-            }
-            return ok;
-        } catch (Throwable t) {
-            lastProbeError = String.valueOf(t);
-            Logx.w("root probe threw: " + t);
-            return false;
-        }
+            out.put("backend", "libsu").put("rootGranted", p.root == null ? JSONObject.NULL : p.root)
+                    .put("shellAvailable", p.shell == null ? JSONObject.NULL : p.shell)
+                    .put("mode", p.shell == null ? "unknown" : !p.shell ? "unavailable" : Boolean.TRUE.equals(p.root) ? "root" : "app")
+                    .put("uid", p.uid < 0 ? JSONObject.NULL : p.uid).put("checkedAt", p.checkedAt)
+                    .put("source", "last shell verification; refreshed at service start and each shell execution");
+        } catch (Exception ignored) {}
+        return out;
     }
 
-    private static String trim(String value) {
-        if (value == null) {
-            return "";
-        }
-        String flat = value.trim().replace('\n', ' ');
-        return flat.length() > 200 ? flat.substring(0, 200) + "..." : flat;
-    }
-
-    /**
-     * What this process can actually see, for when {@code su} is missing.
-     *
-     * <p>Root managers that use an allow-list (Magisk's SuList, KernelSU's
-     * manager) hide {@code su} from every process not on the list, so an app can
-     * be rooted and still get "No such file or directory". Reporting the view
-     * from inside the app process is the only way to tell that apart from a
-     * device that simply is not rooted.
-     */
     public static JSONObject diagnostics() {
-        JSONObject o = new JSONObject();
-        try {
-            JSONArray paths = new JSONArray();
-            for (String candidate : new String[]{
-                    "/system/bin/su", "/system/xbin/su", "/sbin/su",
-                    "/debug_ramdisk/su", "/system/bin/magisk"}) {
-                JSONObject entry = new JSONObject();
-                entry.put("path", candidate);
-                entry.put("exists", new File(candidate).exists());
-                paths.put(entry);
-            }
-            o.put("candidates", paths);
-            o.put("path", String.valueOf(System.getenv("PATH")));
-            o.put("probeError", lastProbeError);
-        } catch (Throwable ignored) {
-        }
-        return o;
+        JSONObject out = permissionJson();
+        try { out.put("probeError", permission.error == null ? JSONObject.NULL : permission.error); }
+        catch (Exception ignored) {}
+        return out;
     }
 
-    public static Result exec(String command, long timeoutMs) {
-        return execRaw(command, timeoutMs);
-    }
+    /** All existing privileged callers retain root-required semantics. */
+    public static Result exec(String command, long timeoutMs) { return execute(command, timeoutMs, true, false, MAX_STREAM_BYTES).result; }
+    static Result execRaw(String command, long timeoutMs) { return exec(command, timeoutMs); }
+    /** Explicit application-shell endpoint, usable on devices without su. */
+    public static Result execShell(String command, long timeoutMs) { return execute(command, timeoutMs, false, false, MAX_STREAM_BYTES).result; }
 
-    static Result execRaw(String command, long timeoutMs) {
-        long started = System.currentTimeMillis();
-        List<String> argv = new ArrayList<>();
-        argv.add(suPath());
-        argv.add("-c");
-        argv.add(command);
-
-        Process process = null;
-        try {
-            ProcessBuilder pb = new ProcessBuilder(argv);
-            pb.redirectErrorStream(false);
-            process = pb.start();
-        } catch (Throwable t) {
-            return new Result(command, -1, "", "could not run "
-                    + suPath() + ": " + t
-                    + "\nIf this device is rooted, the root manager is probably hiding"
-                    + " su from apps (Magisk SuList mode, or an equivalent allow list).",
-                    false, System.currentTimeMillis() - started);
-        }
-
-        StreamDrain outDrain = new StreamDrain(process.getInputStream(), MAX_STREAM_BYTES);
-        StreamDrain errDrain = new StreamDrain(process.getErrorStream(), MAX_STREAM_BYTES);
-        Thread outThread = new Thread(outDrain, "posedmcp-su-stdout");
-        Thread errThread = new Thread(errDrain, "posedmcp-su-stderr");
-        outThread.setDaemon(true);
-        errThread.setDaemon(true);
-        outThread.start();
-        errThread.start();
-
-        // su reads the command from argv, so nothing needs writing to stdin.
-        try {
-            OutputStream stdin = process.getOutputStream();
-            stdin.close();
-        } catch (Throwable ignored) {
-        }
-
-        boolean timedOut = false;
-        try {
-            if (!process.waitFor(Math.max(1L, timeoutMs), TimeUnit.MILLISECONDS)) {
-                timedOut = true;
-                process.destroyForcibly();
-                process.waitFor(3, TimeUnit.SECONDS);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            process.destroyForcibly();
-            timedOut = true;
-        }
-
-        joinQuietly(outThread);
-        joinQuietly(errThread);
-
-        int exit = -1;
-        try {
-            exit = process.exitValue();
-        } catch (Throwable ignored) {
-        }
-
-        return new Result(command, exit, outDrain.text(), errDrain.text(), timedOut,
-                System.currentTimeMillis() - started);
-    }
-
-    private static void joinQuietly(Thread t) {
-        try {
-            t.join(2000L);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /** Reads a stream to exhaustion on its own thread so the process never blocks. */
-    private static final class StreamDrain implements Runnable {
-        private final InputStream in;
-        private final int limit;
-        private final ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        private volatile boolean truncated;
-
-        StreamDrain(InputStream in, int limit) {
-            this.in = in;
-            this.limit = limit;
-        }
-
-        @Override
-        public void run() {
-            byte[] chunk = new byte[8192];
-            try {
-                int n;
-                while ((n = in.read(chunk)) > 0) {
-                    if (buffer.size() < limit) {
-                        buffer.write(chunk, 0, Math.min(n, limit - buffer.size()));
-                    } else {
-                        truncated = true;
-                    }
-                }
-            } catch (Throwable t) {
-                Logx.w("stream drain ended: " + t);
-            }
-        }
-
-        String text() {
-            String s = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
-            return truncated ? s + "\n[... output truncated at " + limit + " bytes ...]" : s;
-        }
-    }
-
-    /** Raw bytes, for callers that must not corrupt binary output. */
     public static byte[] execBinary(String command, long timeoutMs) throws IOException {
-        Process process = new ProcessBuilder(suPath(), "-c", command).start();
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        StreamDrain drain = new StreamDrain(process.getInputStream(), 32 << 20);
-        Thread t = new Thread(drain, "posedmcp-su-binary");
-        t.setDaemon(true);
-        t.start();
-        try {
-            if (!process.waitFor(Math.max(1L, timeoutMs), TimeUnit.MILLISECONDS)) {
-                process.destroyForcibly();
-                throw new IOException("command timed out after " + timeoutMs + "ms");
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            process.destroyForcibly();
-            throw new IOException("interrupted");
-        }
-        joinQuietly(t);
-        buffer.write(drain.buffer.toByteArray());
-        return buffer.toByteArray();
+        Capture capture = execute(command, timeoutMs, true, false, 32 << 20);
+        if (!capture.result.ok()) throw new IOException(capture.result.stderr.isEmpty()
+                ? "binary command failed: " + capture.result.exitCode : capture.result.stderr);
+        if (capture.output.truncated()) throw new IOException("binary output exceeds 32 MiB");
+        return capture.output.bytes();
     }
+
+    /** Watchdog remains root-only and survives closing this command's dedicated session. */
+    public static void launchDetached(String script) throws IOException {
+        Result r = exec("nohup /system/bin/sh -c " + quote(script) + " </dev/null >/dev/null 2>&1 &", 8_000L);
+        if (!r.ok()) throw new IOException("could not arm root watchdog: " + r.stderr);
+    }
+
+    private static final class Capture {
+        final Bounded output;
+        final Result result;
+        Capture(Bounded out, Result result) { output = out; this.result = result; }
+    }
+
+    private static Capture execute(String command, long timeoutMs, boolean requireRoot, boolean nonRoot, int limit) {
+        long started = System.nanoTime();
+        long timeout = Math.max(1, timeoutMs);
+        Bounded out = new Bounded(limit), err = new Bounded(MAX_STREAM_BYTES);
+        AtomicReference<Shell> session = new AtomicReference<>();
+        AtomicBoolean cancelled = new AtomicBoolean();
+        String marker = "__POSED_EXIT_" + UUID.randomUUID() + ":";
+        int[] identity = {-1};
+        boolean[] root = {false};
+        FutureTask<Integer> task = new FutureTask<>(() -> {
+            Shell.Builder builder = Shell.Builder.create().setTimeout(Math.min(15, Math.max(1, (timeout + 999) / 1000)));
+            Context app = context;
+            if (app != null) builder.setContext(app);
+            if (nonRoot) builder.setFlags(Shell.FLAG_NON_ROOT_SHELL);
+            Shell shell = builder.build();
+            session.set(shell);
+            if (cancelled.get()) { shell.close(); return -1; }
+            root[0] = shell.isRoot(); identity[0] = root[0] ? 0 : android.os.Process.myUid();
+            permission = new Permission(root[0], true, identity[0], System.currentTimeMillis(), null);
+            if (requireRoot && !root[0]) {
+                err.write("Root permission is unavailable; command was not executed. Use shell_exec for app-UID commands.".getBytes(StandardCharsets.UTF_8));
+                return -1;
+            }
+            // exec replaces the dedicated libsu shell. EOF terminates binary-safe drains;
+            // a random stderr trailer carries the exit code without touching stdout bytes.
+            String body = "(\n" + command + "\n) </dev/null\n__posed_status=$?\n/system/bin/printf '\\n" + marker
+                    + "%s\\n' \"$__posed_status\" >&2\nexit \"$__posed_status\"\n";
+            shell.execTask((stdin, stdout, stderr) -> {
+                Thread drain = new Thread(() -> copy(stderr, err), "posedmcp-libsu-stderr");
+                drain.setDaemon(true); drain.start();
+                stdin.write(("exec /system/bin/sh -c " + quote(body) + "\n").getBytes(StandardCharsets.UTF_8));
+                stdin.flush();
+                copy(stdout, out);
+                try { drain.join(); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IOException("interrupted", interrupted); }
+            });
+            return 0;
+        });
+        Thread worker = new Thread(task, "posedmcp-libsu-command"); worker.setDaemon(true); worker.start();
+        boolean timedOut = false;
+        String error = null;
+        try { task.get(timeout, TimeUnit.MILLISECONDS); }
+        catch (TimeoutException e) { timedOut = true; error = "Shell timed out after " + timeout + "ms; session closed."; }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); timedOut = true; error = "Shell interrupted; session closed."; }
+        catch (ExecutionException e) {
+            error = "libsu: " + e.getCause();
+            if (session.get() == null) permission = new Permission(false, false, -1, System.currentTimeMillis(), error);
+        } finally {
+            cancelled.set(true);
+            if (!task.isDone()) task.cancel(true);
+            Shell shell = session.get();
+            if (shell != null) {
+                Thread closer = new Thread(() -> { try { shell.close(); } catch (IOException ignored) {} }, "posedmcp-libsu-close");
+                closer.setDaemon(true); closer.start();
+            }
+        }
+        String stderr = new String(err.bytes(), StandardCharsets.UTF_8);
+        int code = -1;
+        int end = stderr.lastIndexOf("\n" + marker);
+        if (end >= 0) {
+            String status = stderr.substring(end + marker.length() + 1).trim();
+            try { code = Integer.parseInt(status); stderr = stderr.substring(0, end); }
+            catch (NumberFormatException ignored) {}
+        } else if (err.truncated()) {
+            String tail = new String(err.tail(), StandardCharsets.UTF_8);
+            int markerAt = tail.lastIndexOf("\n" + marker);
+            if (markerAt >= 0) try { code = Integer.parseInt(tail.substring(markerAt + marker.length() + 1).trim()); }
+            catch (NumberFormatException ignored) {}
+        }
+        if (error != null) stderr += (stderr.isEmpty() ? "" : "\n") + error;
+        if (out.truncated() && limit == MAX_STREAM_BYTES) stderr += "\n[stdout truncated at " + limit + " bytes]";
+        if (err.truncated()) stderr += "\n[stderr truncated]";
+        return new Capture(out, new Result(command, code, limit <= MAX_STREAM_BYTES ? out.bytes() : new byte[0], stderr, timedOut,
+                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), root[0], identity[0]));
+    }
+
+    private static void copy(InputStream input, Bounded capture) {
+        byte[] bytes = new byte[8192];
+        try { int n; while ((n = input.read(bytes)) != -1) capture.write(bytes, n); }
+        catch (IOException e) { Logx.w("libsu stream ended: " + e); }
+    }
+    private static final class Bounded {
+        final ByteArrayOutputStream data = new ByteArrayOutputStream();
+        final int limit;
+        boolean truncated;
+        byte[] tail = new byte[0];
+        Bounded(int limit) { this.limit = limit; }
+        synchronized void write(byte[] bytes) { write(bytes, bytes.length); }
+        synchronized void write(byte[] bytes, int size) {
+            int count = Math.min(size, limit - data.size());
+            data.write(bytes, 0, count); if (count < size) truncated = true;
+            int retained = Math.min(256, size), previous = Math.min(tail.length, 256 - retained);
+            byte[] next = new byte[previous + retained];
+            System.arraycopy(tail, tail.length - previous, next, 0, previous);
+            System.arraycopy(bytes, size - retained, next, previous, retained); tail = next;
+        }
+        synchronized byte[] bytes() { return data.toByteArray(); }
+        synchronized boolean truncated() { return truncated; }
+        synchronized byte[] tail() { return tail.clone(); }
+    }
+    private static String quote(String text) { return "'" + text.replace("'", "'\\''") + "'"; }
+    private RootShell() {}
 }

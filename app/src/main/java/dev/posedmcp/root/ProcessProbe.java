@@ -432,10 +432,7 @@ public final class ProcessProbe {
                         .append("\" ] && kill -CONT ").append(state.pids[i]);
             }
         }
-        ProcessBuilder pb = new ProcessBuilder(RootShell.suPath(), "-c", script.toString());
-        pb.redirectErrorStream(true);
-        pb.redirectOutput(new java.io.File("/dev/null"));
-        pb.start();
+        RootShell.launchDetached(script.toString());
     }
 
     /**

@@ -40,7 +40,8 @@ public final class McpServer {
             "How to work with this server:",
             "1. Prefer the narrowest tool that answers the question. Use device_info, list_packages,",
             "   foreground_app, events_poll and probe_state to understand state before you act.",
-            "2. root_shell_exec runs as uid 0 and ALWAYS shows the user a dialog containing the exact",
+            "2. root_shell_exec requires verified root. shell_exec can run as the app UID without root.",
+            "   Both shell tools ALWAYS show the user a dialog containing the exact",
             "   command and your stated reason. The user must tap approve. A refused or timed-out",
             "   request comes back as an error - report it plainly, do not retry the same command in a",
             "   loop, and never try to route around the confirmation with another tool.",
@@ -62,7 +63,8 @@ public final class McpServer {
             "   a freeze yourself. While an app is frozen, screen_capture sees it and ui_dump",
             "   cannot: the view tree inside probe_state is the only copy.",
             "",
-            "Scope: this device is the user's own, already rooted and running LSPosed. The user has",
+            "Scope: this is the user's own device, using LSPosed or rootless LSPatch. Check /health",
+            "permissions and module_status for available privileges and peers. The user has",
             "explicitly installed this server to let an agent operate the device. That authorisation",
             "covers this device only, and does not extend to destructive commands the user has not",
             "confirmed - the confirmation dialog is the authoritative check, not your own judgement.");
@@ -144,6 +146,7 @@ public final class McpServer {
                 health.put("version", SERVER_VERSION);
                 health.put("tools", tools.size());
                 health.put("uptimeMs", System.currentTimeMillis() - started.get());
+                health.put("permissions", tools.healthPermissions());
             } catch (Throwable ignored) {
             }
             return HttpTransport.Response.json(200, health.toString());

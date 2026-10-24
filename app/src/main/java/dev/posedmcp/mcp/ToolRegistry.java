@@ -637,6 +637,25 @@ public final class ToolRegistry {
                 .build());
 
         // Root shell
+        add(McpTool.of("shell_exec")
+                .title("Run a shell command with available privileges")
+                .description("Runs a confirmed command through libsu. Uses root when granted, otherwise the app UID."
+                        + " Returns the actual privilege and UID. This does not grant adb/system permissions."
+                        + " Always requires the same shell confirmation as root_shell_exec.")
+                .mutating()
+                .input(props("command", McpTool.string("Exact shell command"),
+                        "reason", McpTool.string("Specific reason shown to the user"),
+                        "timeout_ms", McpTool.integer("Execution timeout, default 60000")), "command", "reason")
+                .handler(args -> {
+                    String command = require(args, "command");
+                    requireConfirmation(ConfirmationGate.Kind.SHELL, "Shell command (available privileges)", command,
+                            require(args, "reason"));
+                    RootShell.Result result = RootShell.execShell(command, args.optLong("timeout_ms", prefs.execTimeoutMs()));
+                    return McpTool.json(new JSONObject().put("exitCode", result.exitCode)
+                            .put("stdout", result.stdout).put("stderr", result.stderr)
+                            .put("timedOut", result.timedOut).put("durationMs", result.durationMs)
+                            .put("backend", "libsu").put("root", result.root).put("uid", result.uid));
+                }).build());
         add(McpTool.of("root_shell_exec")
                 .title("Run a root shell command")
                 .description("Runs one command as uid 0 via su. The user is shown a blocking dialog"
@@ -670,6 +689,7 @@ public final class ToolRegistry {
                     out.put("stderr", result.stderr);
                     out.put("timedOut", result.timedOut);
                     out.put("durationMs", result.durationMs);
+                    out.put("backend", "libsu").put("root", result.root).put("uid", result.uid);
                     if (result.timedOut) {
                         out.put("note", "The command was killed after " + timeout + "ms.");
                     }
@@ -2044,19 +2064,28 @@ public final class ToolRegistry {
         }
         if (SavedHook.isSystem(pkg)) {
             throw new McpTool.ToolError("the module is not running inside system_server,"
-                    + " so nothing can be hooked there. Give PosEdMCP \"System Framework\" in its"
-                    + " scope in LSPosed Manager, then reboot - restarting system_server alone is"
-                    + " not always enough - and check module_status for a 'system' peer.");
+                    + " so system hooks are unavailable. LSPatch injects into patched apps only;"
+                    + " system_server features require a system-scoped framework. Check module_status for peers.");
         }
         throw new McpTool.ToolError("no PosEdMCP module inside '" + pkg + "'."
-                + " Add the package to the module's scope in LSPosed Manager, then start (or"
-                + " restart) that app so the module can load into its process.");
+                + " Enable the module for this app in LSPosed, or patch it with LSPatch and PosEdMCP,"
+                + " then reopen that app so the module can load into its process.");
+    }
+
+    public JSONObject healthPermissions() {
+        JSONObject out = RootShell.permissionJson();
+        try {
+            out.put("systemBridgeConnected", capabilities.systemOnline())
+                    .put("accessibilityConnected", AccessibilityBridge.isConnected());
+        } catch (Exception ignored) {}
+        return out;
     }
 
     private JSONObject moduleStatusJson() {
         JSONObject out = new JSONObject();
         try {
             out.put("systemBridgeConnected", capabilities.systemOnline());
+            out.put("shell", RootShell.permissionJson());
             JSONArray peers = new JSONArray();
             for (String key : bridge.connectedKeys()) {
                 peers.put(key);

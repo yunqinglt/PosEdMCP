@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.posedmcp.rootlessfixture" android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="36" />
+    <application android:debuggable="true" android:label="PosEdMCP shell regression">
+        <activity android:name=".FixtureActivity" android:exported="true" />
+    </application>
+</manifest>

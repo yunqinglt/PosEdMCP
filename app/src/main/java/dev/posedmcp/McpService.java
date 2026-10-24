@@ -265,8 +265,8 @@ public final class McpService extends Service {
             mcp.start();
 
             started.set(true);
-            // Runs 'su -c id' once, now, so no agent-triggered call can reach
-            // root outside the confirmation gate.
+            // Preheat libsu on this user-started service. Health requests only
+            // read the verified snapshot and never open a shell or request root.
             DeviceStatus.probeRootAsync();
             handler.removeCallbacks(handoffTicker);
             handoffWasArmed = false;

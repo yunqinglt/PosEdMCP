@@ -1,5 +1,7 @@
 # PosEdMCP
 
+This rootless build uses libsu with application-UID fallback; see [rootless permissions and limits](docs/ROOTLESS.md).
+
 English | [中文](README.zh-CN.md)
 
 Companion apps: [Deploy](https://github.com/yunqinglt/Deploy) for native analysis and [Display](https://github.com/yunqinglt/Display) for framework settings. See [Display AIDL integration](docs/DISPLAY.md) (Project UI, Core and framework hooks implemented for Vector/API 102).

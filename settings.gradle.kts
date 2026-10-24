@@ -12,6 +12,10 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         // The classic Xposed API jar, still published by the Xposed project.
+        maven {
+            url = uri("https://jitpack.io")
+            content { includeGroup("com.github.topjohnwu.libsu") }
+        }
         // LSPosed ships these classes too (XposedBridge$LegacyApiSupport), so
         // this is the API a module actually talks to at runtime.
         maven {

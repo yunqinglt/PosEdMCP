@@ -13,7 +13,7 @@ android {
         minSdk = 31
         targetSdk = 36
         versionCode = 22
-        versionName = "1.1.8"
+        versionName = "1.1.8-rootless"
 
         // Only the ABI the module is used on. The library is small, but the APK
         // is loaded into every scoped process, so there is no reason to carry
@@ -83,6 +83,7 @@ android {
 }
 
 dependencies {
+    implementation("com.github.topjohnwu.libsu:core:6.0.0")
     // Provided by LSPosed at runtime; never packaged into the APK.
     compileOnly("de.robv.android.xposed:api:82")
 

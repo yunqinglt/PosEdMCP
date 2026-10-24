@@ -1,5 +1,7 @@
 # PosEdMCP
 
+当前 rootless 构建使用 libsu 并支持应用 UID 回退，详见 [rootless 权限与边界](docs/ROOTLESS.md)。
+
 [English](README.md) | 中文
 
 辅助软件：[Deploy 原生分析](https://github.com/yunqinglt/Deploy)、[Display 框架设置](https://github.com/yunqinglt/Display)。Display 的 [AIDL 接入说明](docs/DISPLAY.md)（已实现Project UI、Core与框架钩子；当前支持Vector/API102）。

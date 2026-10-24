@@ -7,5 +7,6 @@ public final class PosEdApplication extends Application {
     @Override public void onCreate() {
         super.onCreate();
         Logx.initialize(this);
+        dev.posedmcp.root.RootShell.initialize(this);
     }
 }
