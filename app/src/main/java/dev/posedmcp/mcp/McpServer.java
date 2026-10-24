@@ -27,7 +27,7 @@ import dev.posedmcp.state.Prefs;
 public final class McpServer {
 
     public static final String SERVER_NAME = "posedmcp";
-    public static final String SERVER_VERSION = "1.0.3";
+    public static final String SERVER_VERSION = dev.posedmcp.BuildConfig.VERSION_NAME;
 
     /** Newest first. The negotiated version is the client's if we know it. */
     private static final String[] SUPPORTED_PROTOCOL_VERSIONS = {

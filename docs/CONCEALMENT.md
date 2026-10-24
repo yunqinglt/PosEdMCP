@@ -1,4 +1,6 @@
-# 作用域隐藏策略 1.1.8
+# 作用域隐藏策略 1.1.8（实验功能）
+
+1.1.8 稳定版包含以下实验性策略。策略仍有第三方应用兼容问题，以下检查只证明列明入口与控制例的行为；可在特殊设置中关闭。
 
 在「更多信息 → 特殊设置」中统一开启或关闭。只对模块作用域内的第三方应用安装，
 不进入系统应用或 system_server；内置钩子独立于普通钩子库。保存后重新打开目标应用。
@@ -47,11 +49,31 @@ stdout 按行过滤、保留 CRLF/EOF 和非 package 行，单行缓冲上限 64
 - 堆栈名单加入 `com.android.internal.os.ZygoteInit` 及其内部类；不把这些平台类加入 ClassLoader 禁止名单。
 - `Method.getModifiers` 仍仅隐藏已挂钩 Java 方法的合成 native 位，保留真实 JNI 方法。
 
+## DexPathList 与框架文件
+
+`getDeclaredField/getDeclaredFields` 属于 `Class`，保留原字段与异常，不制造 NoSuchFieldException。
+读取 `dalvik.system.DexPathList` 的 dexElements、nativeLibraryDirectories、systemNativeLibraryDirectories、
+nativeLibraryPathElements 时，用 `Field.get` 返回过滤后的视图：只移除 PosEdMCP/明确框架路径，
+保留数组组件类型和普通条目。原数组、原列表和元素对象均不修改；未知厂商元素结构原样返回。
+
+File 与 native 文件入口共享明确的框架文件名单：
+`/system/framework/XposedBridge.jar`、`/system/xposed.prop`、`/system/lib{,64}/libxposed_art.so`、
+`/system/bin/app_process{,32,64}_xposed`。按 Android 的大小写与完整路径匹配，归一化 `.`/`..`，
+不会按文件名包含 Xposed 就过滤普通应用文件。
+
+这里的重定向采用「不存在」语义，不创建替身文件：exists/isFile/isDirectory/访问检查为 false，
+length/lastModified 为 0，打开为 FileNotFoundException/native ENOENT，Java File 的目录列表移除对应条目。
+元数据回调保留已有异常与 Java 模块内部访问，普通 framework.jar 不受规则影响。
+
+真机对照：反射字段始终存在，开启后返回视图 1 项、关闭后 2 项，Unsafe 控制读取的缓存一直为 2 项。
+新增 dex 路径钩子 3 个、Java 文件钩子 16 个均安装 0 失败。系统本身没有桥接 JAR，
+其 exists=false 不能单独当作本模块成功隐藏的证据；主机使用存在的模拟结果验证回调，原生命中计数也递增。
+
 ## 验证与边界
 
 主机执行生产回调与流过滤：包名边界、UID 混合结果、Binder slice 副本、原权限异常、
 开关、命令输出的字节/EOF、连续 maps 行、堆栈 Getter 和路径归一化均有回归。
-`tests/run-runtime.ps1` 共通过 118 项断言；`tests/run-hooks.ps1` 的现有脚本回归通过。
+`tests/run-runtime.ps1` 共通过 148 项断言；`tests/run-hooks.ps1` 的现有脚本回归通过。
 最终 APK 的 assembleDebug、lintDebug 与签名校验完成，lint 为 0 error；私有框架入口仍有预期警告。
 
 Android 16 / LSPosed 1.10.2：测试应用持有 QUERY_ALL_PACKAGES，PackageManager 及其缓存对象未替换，
@@ -67,5 +89,5 @@ pm/cmd 命令控制例正常退出并保留自身条目；其关闭基线也未�
 
 这不保证整个检测器全部通过：其 native Xposed 引擎检测、工作资料/多开检测，以及未选定应用的
 行为不属于上述包列表规则。原生 inline SVC、外部独立可执行文件/直接 Binder transact、
-APK 离线扫描、目录枚举、其他 maps 读取路径、已缓存结果与厂商私有接口仍可能绕过对应入口。
+APK 离线扫描、原生目录枚举、Unsafe 直接字段读取、其他 maps 读取路径、已缓存结果与厂商私有接口仍可能绕过对应入口。
 本轮未重新加载系统进程、未重启设备，API 102 的原生通道仍需相应设备验证。

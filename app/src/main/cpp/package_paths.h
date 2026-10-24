@@ -22,6 +22,13 @@ static int package_path_hidden(const char *path, const char packages[][256], siz
         normalized[length++] = '/'; memcpy(normalized + length, start, size); length += size;
     }
     normalized[length] = 0;
+    const char *artifacts[] = {"/system/framework/XposedBridge.jar", "/system/xposed.prop",
+        "/system/lib/libxposed_art.so", "/system/lib64/libxposed_art.so",
+        "/system/bin/app_process_xposed", "/system/bin/app_process32_xposed",
+        "/system/bin/app_process64_xposed"};
+    if (count) for (size_t i = 0; i < sizeof artifacts / sizeof *artifacts; i++) {
+        if (!strcmp(normalized, artifacts[i])) return 1;
+    }
     char *parts[16]; size_t n = 0;
     char *cursor = normalized;
     while (*cursor && n < 16) {

@@ -30,6 +30,10 @@ Package visibility checks execute production PM callbacks and stdout filtering w
 immutable lists, Binder slices, original permission exceptions and policy toggles. GCC also executes
 the native package-path matcher, including exact package boundaries and relative path normalization.
 
+Dex/file regressions preserve real Field objects and original typed arrays/lists, filter only
+the returned dex path view, and check exact artifact metadata/open/list callbacks and toggles.
+The runtime suite now passes 148 assertions, including the native framework-path rules.
+
 The hook suite also runs the bridge Athena preset, checking its Hans importance
 exemption for the bridge and subprocesses, and rejecting similar or unrelated packages.
 

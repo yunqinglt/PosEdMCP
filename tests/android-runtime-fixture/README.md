@@ -41,3 +41,11 @@ Wait for `result.json` to contain the current process PID before reading asserti
 
 The fixture intentionally reads raw maps through JNI as a control; the Java policy does not filter
 native maps reads. It does not load module code or implement a module bridge itself.
+
+Pass `--es module_apk PATH` with the installed module APK path to enable `dexPaths`: a separate
+DexClassLoader receives both APKs. The reflected field remains present, its returned typed array
+contains one element when enabled and two when disabled, while Unsafe verifies the cached array
+still contains two. The raw control also documents a bypass; it is not a concealment promise.
+`bridgeFileExists` and `nativeBridgeFile` are compared with the native hit counter, and
+`frameworkFileExists` is the ordinary framework.jar control. A ROM with no bridge JAR already
+returns false/ENOENT in the disabled baseline.

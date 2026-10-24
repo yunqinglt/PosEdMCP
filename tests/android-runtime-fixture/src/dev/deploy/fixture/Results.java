@@ -11,6 +11,10 @@ public final class Results {
  JSONObject r=new JSONObject(); r.put("pid",android.os.Process.myPid()).put("provider",providerValue).put("application",applicationValue).put("providerTime",providerTime);
  createJarMappings();
  r.put("packageVisibility",PackageProbe.collect(c));
+ r.put("dexPaths",DexProbe.collect(c,((android.app.Activity)c).getIntent().getStringExtra("module_apk")));
+ r.put("nativeBridgeFile",new JSONObject(probeFiles("/system/framework/XposedBridge.jar")));
+ java.io.File bridgeFile=new java.io.File("/system/framework/XposedBridge.jar");
+ r.put("bridgeFileExists",bridgeFile.exists()).put("frameworkFileExists",new java.io.File("/system/framework/framework.jar").exists());
  r.put("nativeHiddenFiles",new JSONObject(probeFiles("/data/data/dev.posedmcp")));
  r.put("nativeOwnFiles",new JSONObject(probeFiles(c.getFilesDir().getAbsolutePath())));
  StackTraceElement z=new StackTraceElement("com.android.internal.os.ZygoteInit","main","ZygoteInit.java",42);

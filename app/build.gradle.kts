@@ -12,7 +12,7 @@ android {
         applicationId = "dev.posedmcp"
         minSdk = 31
         targetSdk = 36
-        versionCode = 20
+        versionCode = 22
         versionName = "1.1.8"
 
         // Only the ABI the module is used on. The library is small, but the APK

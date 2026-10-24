@@ -52,6 +52,13 @@ final class ScopeConcealment {
         return enabled && !BYPASS.get() && !internalCaller();
     }
 
+    static <T> T internalView(java.util.function.Supplier<T> operation) {
+        boolean previous = BYPASS.get();
+        BYPASS.set(true);
+        try { return operation.get(); }
+        finally { if (previous) BYPASS.set(true); else BYPASS.remove(); }
+    }
+
     private static boolean hiddenFrame(Object value) {
         if (!(value instanceof StackTraceElement)) return false;
         BYPASS.set(true);
@@ -176,7 +183,9 @@ final class ScopeConcealment {
                 if (name.equals(ScopeConcealment.class.getName())
                         || name.startsWith(ScopeConcealment.class.getName() + "$")
                         || name.startsWith("dev.posedmcp.xposed.PackageConcealment")
-                        || name.startsWith("dev.posedmcp.xposed.PackageListFilter")) continue;
+                        || name.startsWith("dev.posedmcp.xposed.PackageListFilter")
+                        || name.startsWith("dev.posedmcp.xposed.DexPathConcealment")
+                        || name.startsWith("dev.posedmcp.xposed.FrameworkFileConcealment")) continue;
                 // Framework adapters are on every call; find the actual caller.
                 if (name.startsWith("dev.posedmcp.xposed.XposedHookApi")
                         || name.startsWith("dev.posedmcp.xposed.LibXposedHookApi")

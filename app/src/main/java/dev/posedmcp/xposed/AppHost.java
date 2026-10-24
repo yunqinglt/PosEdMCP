@@ -245,6 +245,8 @@ public final class AppHost {
             JSONObject policy = new JSONObject(raw);
             boolean conceal = policy.optBoolean("concealment", true);
             ScopeConcealment.configure(loader, conceal);
+            DexPathConcealment.configure(loader, conceal);
+            FrameworkFileConcealment.configure(loader, conceal);
             PackageConcealment.configure(loader, conceal, pkg);
             NativeFileConcealment.configure(conceal, pkg);
             AdDnsPolicy.configure(policy);
@@ -255,6 +257,8 @@ public final class AppHost {
 
     private static JSONObject builtinStatus() throws org.json.JSONException {
         return ScopeConcealment.status().put("packages", PackageConcealment.status())
+                .put("dexPaths", DexPathConcealment.status())
+                .put("frameworkFiles", FrameworkFileConcealment.status())
                 .put("files", NativeFileConcealment.status());
     }
 

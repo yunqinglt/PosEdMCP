@@ -8,7 +8,8 @@ try {
     $xposedJar = Get-ChildItem .gradle-home/caches/modules-2/files-2.1/de.robv.android.xposed/api/82 -Recurse -Filter '*.jar' | Select-Object -First 1 -ExpandProperty FullName
     if (!$apiJar) { throw 'Build the app first to resolve the libxposed API' }
     $classpath = "$jsonJar;$apiJar;$xposedJar"
-    $sources = @('tests/RuntimePoliciesRegression.java', 'tests/BootstrapRegression.java', 'tests/PackageVisibilityRegression.java',
+    $sources = @('tests/RuntimePoliciesRegression.java', 'tests/BootstrapRegression.java', 'tests/PackageVisibilityRegression.java', 'tests/DexFilesRegression.java',
+        'tests/stubs/dalvik/system/DexPathList.java',
         'tests/stubs/android/os/Process.java', 'tests/stubs/android/os/Bundle.java',
         'tests/stubs/android/content/Context.java', 'tests/stubs/android/content/pm/ApplicationInfo.java',
         'tests/stubs/android/content/pm/PackageManager.java', 'tests/stubs/android/util/AtomicFile.java',
@@ -24,6 +25,9 @@ try {
         'app/src/main/java/dev/posedmcp/xposed/HookRegistry.java',
         'app/src/main/java/dev/posedmcp/diagnostics/DiagnosticRedactor.java',
         'app/src/main/java/dev/posedmcp/xposed/ScopeConcealment.java',
+        'app/src/main/java/dev/posedmcp/xposed/ConcealmentPaths.java',
+        'app/src/main/java/dev/posedmcp/xposed/DexPathConcealment.java',
+        'app/src/main/java/dev/posedmcp/xposed/FrameworkFileConcealment.java',
         'app/src/main/java/dev/posedmcp/xposed/ConcealmentPackages.java',
         'app/src/main/java/dev/posedmcp/xposed/PackageConcealment.java',
         'app/src/main/java/dev/posedmcp/xposed/PackageListFilter.java',
@@ -38,6 +42,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Runtime policy regression failed' }
     & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.PackageVisibilityRegression
     if ($LASTEXITCODE -ne 0) { throw 'Package visibility regression failed' }
+    & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.DexFilesRegression
+    if ($LASTEXITCODE -ne 0) { throw 'Dex and file regression failed' }
     & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.BootstrapRegression
     if ($LASTEXITCODE -ne 0) { throw 'Bootstrap regression failed' }
     $compiler = (Get-Command gcc -ErrorAction Stop).Source

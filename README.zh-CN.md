@@ -6,7 +6,7 @@
 
 长期反馈与后续计划：[开发记忆](docs/DEVELOPMENT_MEMORY.md)。1.1.7 加入独立启动配置进程、诊断 ZIP 导出、作用域隐藏策略及可配置的原生广告域名过滤。
 
-1.1.8 升级[作用域隐藏策略](docs/CONCEALMENT.md)：统一包可见性、原生包目录探测、桥接 JAR 映射行和堆栈方法名处理。
+1.1.8 提供普通版和 rootless 版，增加 dex 路径视图和定点框架文件规则。[作用域隐藏策略](docs/CONCEALMENT.md)仍属实验功能，兼容范围及验证边界见[发布说明](docs/RELEASE_1.1.8.md)。
 
 Android 上给本机 Agent 用的 MCP 服务器。LSPosed 模块 + root shell，让跑在手机里的
 Agent 能真正操作这台设备。
