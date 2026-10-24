@@ -25,6 +25,10 @@ import dev.posedmcp.plugin.HookApi.Unhook;
  */
 public final class XposedHookApi implements HookApi {
 
+    // ART verification can re-enter a ClassLoader/Method hook. Force adapter
+    // verification before installing one, to avoid waiting on its own verifier.
+    private static final HookParamAdapter PARAM_ADAPTER_WARMUP = new HookParamAdapter(null);
+
     private final ClassLoader classLoader;
 
     public XposedHookApi(ClassLoader classLoader) {
@@ -36,6 +40,9 @@ public final class XposedHookApi implements HookApi {
         Class<?> clazz = findClass(className);
         if (clazz == null) {
             return NoopUnhook.INSTANCE;
+        }
+        for (Method method : clazz.getDeclaredMethods()) {
+            if (method.getName().equals(methodName)) HookVisibility.note(method);
         }
         Set<XC_MethodHook.Unhook> unhooks =
                 XposedBridge.hookAllMethods(clazz, methodName, adapter(callback));
@@ -49,10 +56,11 @@ public final class XposedHookApi implements HookApi {
         if (clazz == null) {
             return NoopUnhook.INSTANCE;
         }
-        Method method = XposedHelpers.findMethodExactIfExists(clazz, methodName, parameterTypes);
+        Method method = XposedHelpers.findMethodExactIfExists(clazz, methodName, (Object[]) parameterTypes);
         if (method == null) {
             return NoopUnhook.INSTANCE;
         }
+        HookVisibility.note(method);
         return wrap(XposedBridge.hookMethod(method, adapter(callback)));
     }
 
@@ -70,6 +78,7 @@ public final class XposedHookApi implements HookApi {
         if (member == null) {
             return NoopUnhook.INSTANCE;
         }
+        if (member instanceof Method) HookVisibility.note((Method) member);
         return wrap(XposedBridge.hookMethod(member, adapter(callback)));
     }
 
@@ -83,7 +92,7 @@ public final class XposedHookApi implements HookApi {
         if (clazz == null) {
             return null;
         }
-        Method method = XposedHelpers.findMethodExactIfExists(clazz, name, parameterTypes);
+        Method method = XposedHelpers.findMethodExactIfExists(clazz, name, (Object[]) parameterTypes);
         return method;
     }
 
@@ -159,6 +168,10 @@ public final class XposedHookApi implements HookApi {
             delegate.setResult(result);
         }
 
+        @Override public void setThrowable(Throwable throwable) {
+            delegate.setThrowable(throwable);
+        }
+
         @Override
         public Object result() {
             return delegate.getResult();
@@ -186,6 +199,8 @@ public final class XposedHookApi implements HookApi {
 
     private enum NoopUnhook implements Unhook {
         INSTANCE;
+
+        @Override public boolean isActive() { return false; }
 
         @Override
         public void unhook() {

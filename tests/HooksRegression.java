@@ -76,7 +76,7 @@ public final class HooksRegression {
         check(hooks.callbacks.isEmpty(),"cleanup");
         System.out.println("PASS independent owners, reapply, nested records, multi-method pause and ordinary clear");
     }
-    static void lua(Path file, boolean hyper) throws Exception {
+    static void lua(Path file, boolean hyper, String target) throws Exception {
         Globals globals=JsePlatform.standardGlobals();
         List<LuaValue> captured=new ArrayList<>();
         LuaTable app=new LuaTable();
@@ -89,13 +89,14 @@ public final class HooksRegression {
         globals.set("app",app);
         globals.load(Files.readString(file),file.toString()).call();
         String[] reasons={"OneKeyClean","SwipeUpClean: test","AutoIdleKill", "user request","shell","force-stop", ""};
-        String[] packages={"dev.deploy","dev.deploy:decompiler","dev.deploy.fixture","dev.deployevil","dev.posedmcp","example.app"};
+        String[] packages={target,target+":bootstrap",target+".fixture",target+"evil",
+                target.equals("dev.deploy")?"dev.posedmcp":"dev.deploy","example.app"};
         for(String pkg:packages) for(int r=0;r<reasons.length;r++) {
             boolean[] skipped={false}; LuaTable ctx=new LuaTable(), args=new LuaTable();
             args.set(1,pkg); args.set(hyper?4:5,reasons[r]); ctx.set("args",args);
             ctx.set("set_result",new ZeroArgFunction(){public LuaValue call(){skipped[0]=true;return NIL;}});
             captured.get(0).get("before").call(ctx);
-            check(skipped[0]==((pkg.equals("dev.deploy")||pkg.startsWith("dev.deploy:")) && (!hyper||r<3)),"script match: "+pkg+" / "+reasons[r]);
+            check(skipped[0]==((pkg.equals(target)||pkg.startsWith(target+":")) && (!hyper||r<3)),"script match: "+pkg+" / "+reasons[r]);
         }
         System.out.println("PASS "+file.getFileName()+" (42 package/reason cases)");
         check(captured.size()==(hyper?1:2),"expected ROM hook count");
@@ -106,15 +107,16 @@ public final class HooksRegression {
                 hans.set("pkgName",pkg); args.set(1,hans); ctx.set("args",args);
                 ctx.set("set_result",new OneArgFunction(){public LuaValue call(LuaValue value){result[0]=value;return NIL;}});
                 captured.get(1).get("before").call(ctx);
-                boolean match=pkg.equals("dev.deploy")||pkg.startsWith("dev.deploy:");
+                boolean match=pkg.equals(target)||pkg.startsWith(target+":");
                 check(match?result[0]==LuaValue.TRUE:result[0].isnil(),"Hans exemption leaked: "+pkg);
             }
-            System.out.println("PASS Hans importance matches Deploy only (6 cases)");
+            System.out.println("PASS Hans importance matches "+target+" only (6 cases)");
         }
     }
     public static void main(String[] args) throws Throwable {
         registry();
-        lua(Path.of("app/src/main/assets/special/deploy-athena.lua"),false);
-        lua(Path.of("app/src/main/assets/special/deploy-powerkeeper.lua"),true);
+        lua(Path.of("app/src/main/assets/special/deploy-athena.lua"),false,"dev.deploy");
+        lua(Path.of("app/src/main/assets/special/deploy-powerkeeper.lua"),true,"dev.deploy");
+        lua(Path.of("app/src/main/assets/special/athena.lua"),false,"dev.posedmcp");
     }
 }

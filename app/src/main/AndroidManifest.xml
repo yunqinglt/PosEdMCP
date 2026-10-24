@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="dev.display.permission.CONTROL" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -24,6 +25,7 @@
         <package android:name="com.miui.powerkeeper" />
         <!-- The Deploy companion APK this app binds to over AIDL. -->
         <package android:name="dev.deploy" />
+        <package android:name="dev.display" />
     </queries>
     <!--
       Without this, the platform freezes the process once the app is no longer
@@ -37,6 +39,7 @@
         tools:ignore="QueryAllPackagesPermission" />
 
     <application
+        android:name=".PosEdApplication"
         android:allowBackup="false"
         android:label="@string/app_name"
         android:description="@string/xposed_description"
@@ -121,7 +124,8 @@
         -->
         <service
             android:name=".ipc.BridgeTokenService"
-            android:exported="true" />
+            android:exported="true"
+            android:process=":bootstrap" />
 
         <!--
           The analysis engines live in their own process. Parsing a large APK is
@@ -159,6 +163,15 @@
             android:name=".ipc.BridgeTokenProvider"
             android:authorities="dev.posedmcp.bridge"
             android:exported="true"
-            android:grantUriPermissions="false" />
+            android:grantUriPermissions="false"
+            android:process=":bootstrap" />
+
+        <!-- The framework delivers its configuration Binder here. Keep this
+             lightweight too: scoped-app startup never needs the server UI. -->
+        <provider
+            android:name=".ipc.FrameworkPreferencesProvider"
+            android:authorities="dev.posedmcp.XposedService"
+            android:exported="true"
+            android:process=":bootstrap" />
     </application>
 </manifest>

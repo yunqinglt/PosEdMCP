@@ -44,6 +44,9 @@ public final class AppHost {
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     private static volatile BridgeClient client;
+    private static final Object BOOTSTRAP_LOCK = new Object();
+    private static volatile boolean builtinScopeKnown;
+    private static volatile boolean builtinScopeAllowed;
 
     private AppHost() {
     }
@@ -69,14 +72,58 @@ public final class AppHost {
     /**
      * Called from {@code handleLoadPackage} for every non-system scoped package.
      *
-     * <p>Everything happens on a background thread: this runs while the host
-     * application is still starting, and looking up the bridge credentials can
-     * block (binding a service, waiting on a handshake). Doing that on the main
-     * thread would delay or deadlock the application we are a guest in.
+     * <p>The network bridge is asynchronous. Kept hooks get a bounded early
+     * Binder lookup at Application.attach, before app startup code can use them.
      */
     public static void install(String packageName, ClassLoader appClassLoader) {
+        install(packageName, appClassLoader, null);
+    }
+
+    public static void install(String packageName, ClassLoader appClassLoader,
+            android.content.pm.ApplicationInfo applicationInfo) {
+        if ("dev.posedmcp".equals(packageName)) return;
         if (!INSTALLED.compareAndSet(false, true)) {
             return;
+        }
+        dev.posedmcp.HiddenApi.exempt();
+        if (applicationInfo != null) {
+            builtinScopeAllowed = (applicationInfo.flags
+                    & android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0;
+            builtinScopeKnown = true;
+        }
+        BridgeAuth.setOnResolved(values -> {
+            synchronized (BOOTSTRAP_LOCK) {
+                NativeRuntime.setModuleApk(values.get("module_apk"));
+                configureBuiltins(packageName, appClassLoader, values.get(
+                        dev.posedmcp.state.RuntimePolicy.KEY));
+                String blob = values.get(HookMirror.KEY);
+                if (blob != null && ARMED_FROM_LIBRARY.compareAndSet(false, true)) {
+                    armFromLibrary(packageName, appClassLoader, blob);
+                }
+            }
+        });
+        // Framework preferences do not need an application Context or visibility
+        // of the module package, so use them before Application is constructed.
+        BridgeAuth.resolveFramework();
+        // attach precedes ContentProvider initialization and Application.onCreate.
+        // A bounded Binder lookup here gives startup hooks a chance before those
+        // calls; the network bridge remains fully asynchronous.
+        try {
+            Framework.hookApi(appClassLoader).hook(
+                    android.app.Application.class.getDeclaredMethod("attach", Context.class),
+                    new HookApi.Callback() {
+                        @Override public void after(HookApi.HookParam param) {
+                            if (param.throwable() == null && param.args()[0] instanceof Context) {
+                                Context base = (Context) param.args()[0];
+                                builtinScopeAllowed = (base.getApplicationInfo().flags
+                                        & android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0;
+                                builtinScopeKnown = true;
+                                BridgeAuth.resolveEarly(base);
+                            }
+                        }
+                    });
+        } catch (Throwable t) {
+            Logx.w("could not install attach-time bootstrap: " + t);
         }
         Thread t = new Thread(() -> installBlocking(packageName, appClassLoader),
                 "posedmcp-apphost-" + packageName);
@@ -93,12 +140,6 @@ public final class AppHost {
             // process has an Application - well before the app has finished
             // starting and opened a socket. Registered before the client is
             // built, so the first lookup that carries the library arms them.
-            BridgeAuth.setOnResolved(values -> {
-                String blob = values.get(HookMirror.KEY);
-                if (blob != null && ARMED_FROM_LIBRARY.compareAndSet(false, true)) {
-                    armFromLibrary(packageName, appClassLoader, blob);
-                }
-            });
             BridgeClient bridge = new BridgeClient(Wire.ROLE_APP, packageName,
                     BridgeAuth.bridgePort());
             bridge.registerHandler("load_plugin", args -> loadPlugin(packageName, appClassLoader, args));
@@ -161,7 +202,11 @@ public final class AppHost {
             // swallowed. Asked for by the app in the moment before it freezes
             // this process - a frozen process answers nothing.
             bridge.registerHandler("probe_snapshot", args -> ProbeOps.threadSnapshot());
+            bridge.registerHandler("diagnostics", args -> new JSONObject()
+                    .put("framework", Framework.describe()).put("log", Logx.recent())
+                    .put("builtins", ScopeConcealment.status()).put("adDns", AdDnsPolicy.status()));
             bridge.registerHandler("ping", args -> new JSONObject().put("pong", true)
+                    .put("moduleVersion", dev.posedmcp.BuildConfig.VERSION_NAME)
                     // Which hook framework loaded us, and therefore which HookApi
                     // every hook in this process is built on. Read here rather
                     // than in the app process on purpose: this class runs inside
@@ -169,7 +214,9 @@ public final class AppHost {
                     // exist. The app process has neither API on its classpath, so
                     // asking it would mean loading classes that are not there.
                     .put("framework", Framework.describe())
-                    .put("hooks", HookRegistry.snapshot().size()));
+                    .put("hooks", HookRegistry.snapshot().size())
+                    .put("builtins", ScopeConcealment.status())
+                    .put("adDns", AdDnsPolicy.status()));
             bridge.start();
             client = bridge;
             // Records are pushed out as they are made rather than read back on
@@ -180,6 +227,26 @@ public final class AppHost {
                             record -> emit(Wire.HOOK_RECORD_EVENT, record)));
         } catch (Throwable t) {
             Logx.e("AppHost.install failed for " + packageName, t);
+        }
+    }
+
+    private static void configureBuiltins(String pkg, ClassLoader loader, String raw) {
+        // Legacy credential mirrors carry no policy. They must not reset a
+        // policy already obtained from the bootstrap snapshot during attach.
+        if (raw == null) return;
+        // Do not alter system apps or framework processes. The ordinary bridge
+        // and explicit user hooks still work in those scopes.
+        Context context = currentApplication();
+        if (android.os.Process.myUid() % 100000 < 10000) return;
+        if (context == null && (!builtinScopeKnown || !builtinScopeAllowed)) return;
+        if (context != null && (context.getApplicationInfo().flags
+                & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) return;
+        try {
+            JSONObject policy = new JSONObject(raw);
+            ScopeConcealment.configure(loader, policy.optBoolean("concealment", true));
+            AdDnsPolicy.configure(policy);
+        } catch (Throwable t) {
+            Logx.w("built-in scope policy failed for " + pkg + ": " + t);
         }
     }
 

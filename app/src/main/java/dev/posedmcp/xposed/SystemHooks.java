@@ -172,6 +172,8 @@ public final class SystemHooks {
                         args.optString("source", ""),
                         args.optLong("max_instructions", LuaRuntime.DEFAULT_MAX_INSTRUCTIONS));
             });
+            bridge.registerHandler("diagnostics", args -> new JSONObject()
+                    .put("framework", Framework.describe()).put("log", Logx.recent()));
             bridge.start();
             client = bridge;
             // Same bargain as in an ordinary app, for the opposite reason: this

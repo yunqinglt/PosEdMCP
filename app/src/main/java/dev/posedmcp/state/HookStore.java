@@ -219,6 +219,7 @@ public final class HookStore {
         // reads this back on another thread, and a pending write would show it
         // the old definition.
         sp.edit().putString(KEY, array.toString()).commit();
+        dev.posedmcp.ipc.BridgeBootstrap.publish(app);
         noteGuard(hooks);
     }
 

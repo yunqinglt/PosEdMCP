@@ -15,3 +15,21 @@ into `.tools/test-libs/`. The runner verifies SHA-256
 `3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed`.
 Use your local proxy if required; no jar is committed. Override `JavaDirectory`
 or `GradleCache` when the local installation differs.
+
+Run `powershell -File tests/run-runtime.ps1` after building the app for the runtime
+policy regressions. It executes production callbacks against fake hook bindings,
+including external callers, real BufferedReader streams, class lookup outcomes,
+genuine JNI modifier preservation and libxposed exception replacement. It also
+exercises the production bootstrap snapshot reader/writer with platform fixtures,
+UID filtering, config updates without restarting the reader, corruption handling
+and token redaction. A host GCC runs the actual C DNS matcher. Windows WinLibs in
+a Unicode home path uses an ignored local junction and explicit linker prefixes.
+Platform fixtures live under `tests/stubs` and are never part of the app APK.
+
+The hook suite also runs the bridge Athena preset, checking its Hans importance
+exemption for the bridge and subprocesses, and rejecting similar or unrelated packages.
+
+## Android runtime checks
+
+See [android-runtime-fixture](android-runtime-fixture/README.md) for the disposable on-device
+startup, concealment and libc DNS control application. It is separate from the host regressions.

@@ -8,7 +8,6 @@ import android.os.Binder;
 import android.os.Bundle;
 
 import dev.posedmcp.Logx;
-import dev.posedmcp.state.Prefs;
 
 /**
  * Hands the bridge credentials to the module running inside other processes.
@@ -62,12 +61,7 @@ public class BridgeTokenProvider extends ContentProvider {
         String caller = describe(callingUid);
         Logx.i("bridge credentials requested by " + caller);
 
-        Prefs prefs = Prefs.of(getContext());
-        prefs.ensureTokens();
-
-        Bundle result = new Bundle();
-        result.putString(KEY_TOKEN, prefs.bridgeToken());
-        result.putInt(KEY_PORT, prefs.bridgePort());
+        Bundle result = BridgeBootstrap.read(getContext(), callingUid);
         // Returned so a future version can refuse unusual callers if the user
         // wants that; recording it now means the decision can be made on data.
         result.putString("caller", caller);

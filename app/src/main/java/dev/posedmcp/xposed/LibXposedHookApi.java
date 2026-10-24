@@ -42,7 +42,11 @@ import dev.posedmcp.plugin.HookApi;
  */
 public final class LibXposedHookApi implements HookApi {
 
-    private static final Unhook NOOP = () -> {
+    private static final Params PARAM_ADAPTER_WARMUP = new Params(null);
+
+    private static final Unhook NOOP = new Unhook() {
+        @Override public void unhook() {}
+        @Override public boolean isActive() { return false; }
     };
 
     private final XposedInterface framework;
@@ -154,9 +158,11 @@ public final class LibXposedHookApi implements HookApi {
 
     private Unhook install(Executable target, Callback callback) {
         try {
+            if (target instanceof Method) HookVisibility.note((Method) target);
             HookHandle handle = framework.hook(target)
-                    // The default, and the one this module wants: a hook that
-                    // throws must not take the application's call down with it.
+                    // Preserve intentional setThrowable outcomes. Callback bugs
+                    // are caught locally by intercept(), independently of them.
+                    .setExceptionMode(XposedInterface.ExceptionMode.PASSTHROUGH)
                     .intercept(chain -> intercept(chain, callback));
             return handle::unhook;
         } catch (Throwable t) {
@@ -170,40 +176,29 @@ public final class LibXposedHookApi implements HookApi {
     private Object intercept(Chain chain, Callback callback) throws Throwable {
         Params params = new Params(chain);
 
-        callback.before(params);
-        if (params.answered) {
-            // setResult() from before() means "do not run the original", which is
-            // the one thing the chain model expresses by simply not proceeding.
-            //
-            // after() still has to run, and that is not a formality: the record of
-            // a call is closed there. Returning straight from here left a hook
-            // that answers for a method with no trace in hook_records at all -
-            // measured on a HyperOS one-tap clean, where the countermeasure
-            // refused a force-stop and the log said so while the record list held
-            // only the calls that had been let through. A blocked call looking
-            // exactly like one that never arrived is the answer this module exists
-            // not to give. The classic backend calls both halves, so this only
-            // brings the two level.
-            Object chosen = params.result;
-            callback.after(params);
-            return params.answered ? params.result : chosen;
-        }
-
         try {
-            params.result = chain.proceed(params.args);
-        } catch (Throwable thrown) {
-            params.thrown = thrown;
+            callback.before(params);
+        } catch (Throwable bug) {
+            Logx.w("hook before callback failed: " + bug);
+            params.result = null;
+            params.thrown = null;
             params.answered = false;
-            callback.after(params);
-            if (params.answered) {
-                // after() chose a value over the throw, as classic Xposed allows.
-                return params.result;
-            }
-            throw thrown;
         }
-
-        params.answered = false;
-        callback.after(params);
+        if (!params.answered) {
+            try { params.result = chain.proceed(params.args); }
+            catch (Throwable original) { params.thrown = original; }
+        }
+        // Close after even when before skipped the original.
+        Object result = params.result;
+        Throwable thrown = params.thrown;
+        try {
+            callback.after(params);
+        } catch (Throwable bug) {
+            Logx.w("hook after callback failed: " + bug);
+            params.result = result;
+            params.thrown = thrown;
+        }
+        if (params.thrown != null) throw params.thrown;
         return params.result;
     }
 
@@ -234,7 +229,7 @@ public final class LibXposedHookApi implements HookApi {
 
         Params(Chain chain) {
             this.chain = chain;
-            List<Object> incoming = chain.getArgs();
+            List<Object> incoming = chain == null ? null : chain.getArgs();
             this.args = incoming == null ? new Object[0] : incoming.toArray();
         }
 
@@ -251,6 +246,13 @@ public final class LibXposedHookApi implements HookApi {
         @Override
         public void setResult(Object value) {
             result = value;
+            thrown = null;
+            answered = true;
+        }
+
+        @Override public void setThrowable(Throwable value) {
+            thrown = value;
+            result = null;
             answered = true;
         }
 

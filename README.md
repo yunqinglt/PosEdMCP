@@ -2,6 +2,10 @@
 
 English | [中文](README.zh-CN.md)
 
+Companion apps: [Deploy](https://github.com/yunqinglt/Deploy) for native analysis and [Display](https://github.com/yunqinglt/Display) for framework settings. See [Display AIDL integration](docs/DISPLAY.md) (Project UI, Core and framework hooks implemented for Vector/API 102).
+
+Long-term feedback and future ad SDK strategy plans: [development memory](docs/DEVELOPMENT_MEMORY.md). Version 1.1.7 adds an independent bootstrap process, diagnostic ZIP export, scope concealment and configurable native DNS filtering.
+
 An MCP server for an agent running on the Android device itself. An LSPosed module plus a
 root shell, so an agent living *on the phone* can actually operate the phone.
 

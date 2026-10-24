@@ -2,6 +2,10 @@
 
 [English](README.md) | 中文
 
+辅助软件：[Deploy 原生分析](https://github.com/yunqinglt/Deploy)、[Display 框架设置](https://github.com/yunqinglt/Display)。Display 的 [AIDL 接入说明](docs/DISPLAY.md)（已实现Project UI、Core与框架钩子；当前支持Vector/API102）。
+
+长期反馈与后续计划：[开发记忆](docs/DEVELOPMENT_MEMORY.md)。1.1.7 加入独立启动配置进程、诊断 ZIP 导出、作用域隐藏策略及可配置的原生广告域名过滤。
+
 Android 上给本机 Agent 用的 MCP 服务器。LSPosed 模块 + root shell，让跑在手机里的
 Agent 能真正操作这台设备。
 

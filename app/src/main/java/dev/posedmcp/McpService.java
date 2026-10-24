@@ -304,6 +304,7 @@ public final class McpService extends Service {
     @Override
     public void onDestroy() {
         shutdown();
+        dev.posedmcp.display.DisplayClient.disconnect();
         instance = null;
         super.onDestroy();
     }
@@ -462,6 +463,28 @@ public final class McpService extends Service {
 
     public int connectedPeers() {
         return bridge == null ? 0 : bridge.connectedKeys().size();
+    }
+
+    /** Read-only snapshots for a user-requested export, with a total deadline. */
+    public org.json.JSONArray diagnosticPeers() {
+        org.json.JSONArray out = new org.json.JSONArray();
+        BridgeServer server = bridge;
+        if (server == null) return out;
+        long deadline = android.os.SystemClock.elapsedRealtime() + 6000;
+        for (String key : server.connectedKeys()) {
+            JSONObject entry = new JSONObject();
+            try {
+                entry.put("process", key);
+                long remaining = deadline - android.os.SystemClock.elapsedRealtime();
+                if (remaining <= 0) entry.put("error", "diagnostic deadline reached");
+                else entry.put("status", server.request(key, "diagnostics", new JSONObject(),
+                        Math.min(remaining, 750L)));
+            } catch (Exception e) {
+                try { entry.put("error", e.toString()); } catch (Exception ignored) {}
+            }
+            out.put(entry);
+        }
+        return out;
     }
 
     public boolean systemBridgeConnected() {

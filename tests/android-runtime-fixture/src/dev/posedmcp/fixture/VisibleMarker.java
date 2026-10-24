@@ -1,0 +1,1 @@
+package dev.posedmcp.fixture; public final class VisibleMarker {}

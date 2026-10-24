@@ -27,3 +27,5 @@ rootProject.name = "posedmcp"
 include(":app")
 // Local source snapshot of the separately maintained Deploy contract.
 include(":deploy-api")
+// Local snapshot of https://github.com/yunqinglt/Display/tree/main/display-api.
+include(":display-api")

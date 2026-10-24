@@ -186,6 +186,19 @@ public final class ToolRegistry {
                 .handler(args -> McpTool.json(moduleStatusJson()))
                 .build());
 
+        add(McpTool.of("scope_status")
+                .title("Scoped process runtime status")
+                .description("Read the loaded module version, hook framework, internal concealment"
+                        + " and native DNS filter status from one connected application process.")
+                .readOnly()
+                .input(props("package", McpTool.string("Connected application package or exact peer")),
+                        "package")
+                .handler(args -> {
+                    String pkg = require(args, "package");
+                    requirePeer(pkg);
+                    return McpTool.json(capabilities.appCall(pkg, "ping", new JSONObject(), 5_000L));
+                }).build());
+
         add(McpTool.of("list_packages")
                 .title("List installed apps")
                 .description("Installed packages with their labels. Filter with a substring."
@@ -450,6 +463,9 @@ public final class ToolRegistry {
                     return McpTool.json(DexClient.get(context).call("assemble", call, 600_000L));
                 })
                 .build());
+
+        dev.posedmcp.display.DisplayTools.register(context, this::add,
+                (title, detail, reason) -> requireConfirmation(ConfirmationGate.Kind.PLUGIN, title, detail, reason));
 
         add(McpTool.of("deploy_status")
                 .title("Deploy backend status")

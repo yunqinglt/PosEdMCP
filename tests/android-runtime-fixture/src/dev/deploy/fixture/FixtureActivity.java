@@ -1,0 +1,4 @@
+package dev.deploy.fixture;
+public final class FixtureActivity extends android.app.Activity {
+ public void onCreate(android.os.Bundle b) { super.onCreate(b); android.widget.TextView t=new android.widget.TextView(this); t.setText("PosEd Runtime Fixture"); setContentView(t); new Thread(()->{ try { org.json.JSONObject r=Results.collect(this); try(java.io.FileOutputStream f=openFileOutput("result.json",0)){ f.write(r.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8)); } runOnUiThread(()->t.setText(r.toString())); }catch(Throwable e){try(java.io.FileOutputStream f=openFileOutput("result.json",0)){f.write(e.toString().getBytes());}catch(Exception ignored){}} },"fixture-checks").start(); }
+}

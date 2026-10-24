@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- The app is called this in every language. -->
-    <string name="app_name">奈何桥</string>
+    <string name="app_name" translatable="false">奈何桥</string>
     <string name="about">About</string>
     <string name="xposed_description">Root-backed MCP server for on-device agents: confirmed shell execution, screen capture, input injection and dynamic code injection into scoped apps.</string>
     <!-- Shown in the system accessibility settings, so it says plainly what this is. -->
@@ -247,10 +247,10 @@
     <string name="special_settings">Special settings…</string>
 
     <!-- Special settings: countermeasures that ship inside this APK -->
-    <string name="special_intro">This app\'s own countermeasures against the system killing it in the background. They are not hooks an agent made: they do not appear on the Hooks page, and they cannot be deleted - only paused. Each one is aimed at the system framework, so a mistake here is a mistake in the process the whole phone runs on.</string>
+    <string name="special_intro">Built-in scope policies and background protection, separate from the Hooks library. The manufacturer-specific protection controls below run in the system framework; changes there affect the process the whole phone depends on.</string>
     <string name="special_none">No countermeasure is written for this system yet. These are written against specific manufacturers\' background-app killers, and this is not one of them. MIUI\'s is being measured; ColorOS\'s is here.</string>
     <string name="special_athena_title">Counter Athena (dangerous)</string>
-    <string name="special_athena_blurb">ColorOS force-stops apps behind your back: Athena is what does it, with the reason \'o-stop\', when you swipe an app out of Recents or the screen turns off. This stops it doing that to 奈何桥, and leaves it working normally for every other app. It also guards the probe\'s cgroup freeze: while one holds, HANS - ColorOS\'s cgroup freezer manager - is kept from thawing that app.</string>
+    <string name="special_athena_blurb">Protect the bridge and its subprocesses from Athena cleanup, and exempt them before Hans freezes their processes, network and Binder calls. Other apps and explicit user force-stop remain unaffected. The probe\'s existing cgroup freeze guard is retained. Requires the system framework scope; ROM interface mismatches are reported as hook failures.</string>
 
     <string name="special_powerkeeper_title">HyperOS optimization (dangerous)</string>
     <string name="special_powerkeeper_blurb">HyperOS force-stops apps behind your back, and it has several ways in: one-tap cleanup, cleaning when the screen turns off, cleaning when you swipe an app away. They all finish in the same place inside the system, with a reason of their own - OneKeyClean, LockScreenClean, SwipeUpClean and so on. This stops that happening to 奈何桥, and leaves every other app, and every other reason, exactly as it was.</string>
@@ -301,4 +301,16 @@ Once it is on, it can be paused here at any time but not deleted - and the rescu
     <string name="special_deploy_title">Help Deploy</string>
     <string name="special_deploy_athena_blurb">ColorOS: protect Deploy from Athena cleanup and Hans background freezing of its process, network and Binder calls. Other apps and explicit user force-stop remain unaffected. Independent of the bridge protection switch; requires the system framework scope. ROM interface mismatches are reported as hook failures.</string>
     <string name="special_deploy_powerkeeper_blurb">HyperOS: exempt Deploy and its subprocesses from the known background-cleaner force-stop reasons. Other apps and explicit user force-stop remain unaffected. Independent of the bridge protection switch; requires the system framework scope.</string>
+    <string name="export_logs">Export diagnostic logs…</string>
+    <string name="logs_collecting">Collecting diagnostic logs…</string>
+    <string name="logs_saved">Diagnostic ZIP saved. Review log messages before sharing.</string>
+    <string name="logs_failed">Could not export logs: %1$s</string>
+    <string name="scope_policy_title">SCOPED APP POLICIES</string>
+    <string name="scope_policy_body">Built-in hooks for third-party apps in the module scope. These are separate from your Hooks library. Save, then restart the affected apps. System apps and the system framework are excluded.</string>
+    <string name="scope_concealment">Hide module traces in scoped apps</string>
+    <string name="scope_ad_dns">Filter advertising DNS names</string>
+    <string name="scope_ad_dns_body">Filters libc getaddrinfo using your domain rules. Exact domains match only that name; *.example.com matches subdomains only. No built-in domain list. Shared domains may also serve app features. Requires framework native hook support; custom DNS, direct IPs and existing connections are outside this filter.</string>
+    <string name="scope_domain_hint">One domain per line, e.g. ads.example.com</string>
+    <string name="scope_policy_save">Save scope policies</string>
+    <string name="scope_policy_saved">Saved. Restart affected scoped apps to apply.</string>
 </resources>

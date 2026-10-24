@@ -19,6 +19,11 @@ public interface HookApi {
         /** Overrides the return value. Only meaningful from {@link Callback#before}. */
         void setResult(Object result);
 
+        /** Chooses an exception instead of a result, in either callback phase. */
+        default void setThrowable(Throwable throwable) {
+            throw new UnsupportedOperationException("This hook backend cannot replace exceptions");
+        }
+
         Object result();
 
         /** Sets a field on {@code thisObject}, or on the class for statics. */
@@ -47,6 +52,9 @@ public interface HookApi {
     /** The handle for an installed hook. */
     interface Unhook {
         void unhook();
+
+        /** False for an unresolved or failed installation. */
+        default boolean isActive() { return true; }
     }
 
     Unhook hookAllMethods(String className, String methodName, Callback callback);

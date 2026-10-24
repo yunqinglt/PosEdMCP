@@ -26,6 +26,7 @@ public class PosEdMcpModule implements IXposedHookLoadPackage, IXposedHookZygote
 
     @Override
     public void initZygote(StartupParam startupParam) {
+        if (startupParam != null) NativeRuntime.setModuleApk(startupParam.modulePath);
         // Nothing is done this early: API 101+ forbids injecting into zygote
         // itself, and everything here is scoped per-process anyway.
     }
@@ -51,7 +52,7 @@ public class PosEdMcpModule implements IXposedHookLoadPackage, IXposedHookZygote
             }
 
             log("installing app host in " + packageName);
-            AppHost.install(packageName, lpparam.classLoader);
+            AppHost.install(packageName, lpparam.classLoader, lpparam.appInfo);
         } catch (Throwable t) {
             Logx.e("handleLoadPackage failed for " + safeName(lpparam), t);
         }

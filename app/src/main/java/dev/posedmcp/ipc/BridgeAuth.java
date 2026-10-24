@@ -95,9 +95,56 @@ public final class BridgeAuth {
     }
 
     private static volatile OnResolved onResolved;
+    private static volatile java.util.function.Supplier<String> frameworkSnapshot;
+
+    public static void setFrameworkSnapshot(java.util.function.Supplier<String> reader) {
+        frameworkSnapshot = reader;
+    }
+
+    private static Map<String, String> frameworkValues() {
+        java.util.function.Supplier<String> reader = frameworkSnapshot;
+        if (reader == null) return null;
+        try {
+            String snapshot = reader.get();
+            if (snapshot == null || snapshot.isEmpty()) return null;
+            org.json.JSONObject json = new org.json.JSONObject(snapshot);
+            Map<String, String> values = new HashMap<>();
+            java.util.Iterator<String> keys = json.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                values.put(key, String.valueOf(json.get(key)));
+            }
+            return values;
+        } catch (Throwable t) {
+            Logx.w("framework bootstrap preferences unavailable: " + t);
+            return null;
+        }
+    }
 
     public static void setOnResolved(OnResolved listener) {
         onResolved = listener;
+    }
+
+    /** Bounded attach-time lookup. Binder callbacks use a worker even on the main thread. */
+    public static void resolveEarly(Context context) {
+        if (resolveFramework()) return;
+        Bundle reply = queryService(context, 1500L);
+        if (reply == null) return;
+        Map<String, String> values = new HashMap<>();
+        for (String key : reply.keySet()) {
+            Object value = reply.get(key);
+            if (value != null) values.put(key, String.valueOf(value));
+        }
+        resolved(values, "attach-time bootstrap Binder");
+    }
+
+    public static boolean resolveFramework() {
+        Map<String, String> remote = frameworkValues();
+        if (remote != null) {
+            resolved(remote, "framework bootstrap preferences");
+            return true;
+        }
+        return false;
     }
 
     private BridgeAuth() {
@@ -126,6 +173,11 @@ public final class BridgeAuth {
 
     private static Map<String, String> load(String key) {
         Map<String, String> out = new HashMap<>();
+
+        Map<String, String> remote = frameworkValues();
+        if (remote != null && remote.containsKey(key)) {
+            return resolved(remote, "framework bootstrap preferences");
+        }
 
         // 1. The published mirror. This is the only route that works from inside
         //    another app's process: LSPosed's XSharedPreferences reads the legacy
@@ -295,6 +347,10 @@ public final class BridgeAuth {
         if (base == null) {
             return null;
         }
+        return queryService(base, 4000L);
+    }
+
+    private static Bundle queryService(Context base, long timeoutMs) {
 
         final Bundle[] answer = {null};
         final java.util.concurrent.CountDownLatch done =
@@ -334,13 +390,16 @@ public final class BridgeAuth {
                 new ComponentName(BridgeTokenService.PACKAGE, BridgeTokenService.CLASS));
         boolean bound = false;
         try {
-            bound = base.bindService(intent, connection, Context.BIND_AUTO_CREATE);
+            bound = base.bindService(intent, Context.BIND_AUTO_CREATE,
+                    task -> ReplyLooper.get().post(task), connection);
             if (!bound) {
                 // Expected for an ordinary third-party app: package visibility
                 // hides this app from it. The connection handshake is the way in.
                 return null;
             }
-            done.await(4, java.util.concurrent.TimeUnit.SECONDS);
+            if (!done.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                Logx.w("bootstrap Binder lookup timed out after " + timeoutMs + "ms");
+            }
             return answer[0];
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

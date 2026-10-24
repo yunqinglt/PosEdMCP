@@ -83,6 +83,9 @@ import dev.posedmcp.xposed.LuaRuntime;
 public class MainActivity extends AppCompatActivity {
 
     private static final int REQUEST_NOTIFICATIONS = 100;
+    private static final int REQUEST_EXPORT_LOGS = 101;
+    private java.io.File pendingLogExport;
+    private boolean collectingLogs;
 
     private Prefs prefs;
     private View root;
@@ -136,6 +139,10 @@ public class MainActivity extends AppCompatActivity {
         // view resolves a colour against the theme.
         DynamicColors.applyToActivityIfAvailable(this);
         super.onCreate(savedInstanceState);
+        if (savedInstanceState != null) {
+            String pending = savedInstanceState.getString("pendingLogExport");
+            if (pending != null) pendingLogExport = new java.io.File(pending);
+        }
         prefs = Prefs.of(this);
         prefs.ensureTokens();
         BridgeCredentials.publish(this, prefs.bridgeToken(), prefs.bridgePort());
@@ -249,8 +256,62 @@ public class MainActivity extends AppCompatActivity {
         content.setPadding(0, dp(8), 0, dp(12));
         content.addView(sheetRow(R.string.about, sheet, this::showAbout));
         content.addView(sheetRow(R.string.special_settings, sheet, this::showSpecialSettings));
+        content.addView(sheetRow(R.string.export_logs, sheet, this::exportLogs));
         sheet.setContentView(content);
         sheet.show();
+    }
+
+    private void exportLogs() {
+        if (collectingLogs) return;
+        collectingLogs = true;
+        toast(getString(R.string.logs_collecting));
+        new Thread(() -> {
+            try {
+                java.io.File bundle = dev.posedmcp.diagnostics.DiagnosticBundle.create(this);
+                runOnUiThread(() -> {
+                    collectingLogs = false;
+                    if (isFinishing() || isDestroyed()) return;
+                    pendingLogExport = bundle;
+                    try {
+                        startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                                .addCategory(Intent.CATEGORY_OPENABLE).setType("application/zip")
+                                .putExtra(Intent.EXTRA_TITLE, bundle.getName()), REQUEST_EXPORT_LOGS);
+                    } catch (Exception e) { toast(getString(R.string.logs_failed, e.getMessage())); }
+                });
+            } catch (Exception e) {
+                Logx.e("diagnostic export failed", e);
+                runOnUiThread(() -> {
+                    collectingLogs = false;
+                    toast(getString(R.string.logs_failed, e.getMessage()));
+                });
+            }
+        }, "posedmcp-log-bundle").start();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        if (pendingLogExport != null) state.putString("pendingLogExport", pendingLogExport.getPath());
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != REQUEST_EXPORT_LOGS) return;
+        java.io.File source = pendingLogExport;
+        pendingLogExport = null;
+        if (result != RESULT_OK || data == null || data.getData() == null || source == null) return;
+        Uri uri = data.getData();
+        new Thread(() -> {
+            try (java.io.InputStream in = new java.io.FileInputStream(source);
+                    java.io.OutputStream out = getContentResolver().openOutputStream(uri, "wt")) {
+                if (out == null) throw new java.io.IOException("Cannot open destination");
+                byte[] buffer = new byte[8192];
+                int n;
+                while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
+                runOnUiThread(() -> toast(getString(R.string.logs_saved)));
+            } catch (Exception e) {
+                runOnUiThread(() -> toast(getString(R.string.logs_failed, e.getMessage())));
+            }
+        }, "posedmcp-log-save").start();
     }
 
     private View sheetRow(int labelRes, BottomSheetDialog sheet, Runnable action) {
@@ -292,6 +353,7 @@ public class MainActivity extends AppCompatActivity {
 
         LinearLayout content = column();
         content.addView(body(getString(R.string.special_intro)));
+        content.addView(runtimePolicyCard());
 
         List<SpecialHooks.Spec> specs = SpecialHooks.available(this);
         if (specs.isEmpty()) {
@@ -312,6 +374,45 @@ public class MainActivity extends AppCompatActivity {
                 .setView(scrolled(content))
                 .setPositiveButton(R.string.action_close, null)
                 .show();
+    }
+
+    private View runtimePolicyCard() {
+        LinearLayout content = column();
+        content.addView(section(getString(R.string.scope_policy_title)));
+        content.addView(body(getString(R.string.scope_policy_body)));
+        JSONObject policy = dev.posedmcp.state.RuntimePolicy.read(this);
+        MaterialSwitch concealment = new MaterialSwitch(this);
+        concealment.setText(R.string.scope_concealment);
+        concealment.setChecked(policy.optBoolean("concealment", true));
+        content.addView(concealment);
+        MaterialSwitch dns = new MaterialSwitch(this);
+        dns.setText(R.string.scope_ad_dns);
+        dns.setChecked(policy.optBoolean("ad_dns_enabled", false));
+        content.addView(dns);
+        content.addView(body(getString(R.string.scope_ad_dns_body)));
+        EditText domains = new EditText(this);
+        domains.setHint(R.string.scope_domain_hint);
+        domains.setMinLines(3);
+        domains.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        JSONArray entries = policy.optJSONArray("ad_domains");
+        StringBuilder text = new StringBuilder();
+        if (entries != null) for (int i = 0; i < entries.length(); i++) {
+            if (i > 0) text.append('\n');
+            text.append(entries.optString(i));
+        }
+        domains.setText(text.toString());
+        content.addView(domains);
+        content.addView(tonalButton(getString(R.string.scope_policy_save), view -> {
+            try {
+                String[] rules = dev.posedmcp.state.DomainRules.parse(domains.getText().toString());
+                policy.put("concealment", concealment.isChecked())
+                        .put("ad_dns_enabled", dns.isChecked()).put("ad_domains", new JSONArray(rules));
+                dev.posedmcp.state.RuntimePolicy.save(this, policy);
+                toast(getString(R.string.scope_policy_saved));
+            } catch (Exception e) { domains.setError(e.getMessage()); }
+        }));
+        return content;
     }
 
     /**

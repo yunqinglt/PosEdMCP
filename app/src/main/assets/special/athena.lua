@@ -41,3 +41,17 @@ app.hook{
     end
   end
 }
+
+-- Match the same verified ColorOS importance funnel as the Deploy guard.
+-- Exempt the bridge before Hans proxies Binder and freezes its UID/network.
+app.hook{
+  class = 'com.android.server.hans.OplusHansImportance',
+  method = 'isImportantPkg',
+  params = 'com.android.server.hans.OplusHansPackage,int,boolean,java.lang.String',
+  effect = 'Keep the bridge eligible to run before Hans proxies or freezes its UID',
+  max_records = 32,
+  before = function(ctx)
+    local pkg = app.call(ctx.args[1], 'getPkgName()')
+    if isBridge(pkg) then ctx.set_result(true) end
+  end
+}

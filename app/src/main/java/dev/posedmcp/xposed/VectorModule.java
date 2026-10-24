@@ -66,6 +66,7 @@ public class VectorModule extends XposedModule {
      * modules the 101 way.
      */
     public VectorModule(XposedInterface base, ModuleLoadedParam param) {
+        configureBootstrapReader(base);
         attachFrameworkAnyArity(base);
         processName = processNameOf(param);
         // Named as precisely as this framework can be named. Its own classes are
@@ -142,6 +143,9 @@ public class VectorModule extends XposedModule {
 
     @Override
     public void onModuleLoaded(ModuleLoadedParam param) {
+        configureBootstrapReader(this);
+        try { NativeRuntime.setModuleApk(getModuleApplicationInfo().sourceDir); }
+        catch (Throwable ignored) { /* The bootstrap service can supply it later. */ }
         try {
             String framework = describeFramework();
             Framework.adoptLibXposed(
@@ -151,6 +155,15 @@ public class VectorModule extends XposedModule {
         } catch (Throwable t) {
             Logx.e("onModuleLoaded failed", t);
         }
+    }
+
+    private void configureBootstrapReader(XposedInterface source) {
+        dev.posedmcp.ipc.BridgeAuth.setFrameworkSnapshot(() -> {
+            android.content.SharedPreferences preferences = source.getRemotePreferences(
+                    dev.posedmcp.ipc.FrameworkPreferencesProvider.GROUP);
+            return preferences == null ? null : preferences.getString(
+                    dev.posedmcp.ipc.FrameworkPreferencesProvider.SNAPSHOT, null);
+        });
     }
 
     /** Never throws: a framework that is missing one of these is still usable. */
@@ -189,15 +202,16 @@ public class VectorModule extends XposedModule {
 
     @Override
     public void onPackageLoaded(PackageLoadedParam param) {
-        route(param.getPackageName(), param.getDefaultClassLoader());
+        route(param.getPackageName(), param.getDefaultClassLoader(), param.getApplicationInfo());
     }
 
     @Override
     public void onPackageReady(PackageReadyParam param) {
-        route(param.getPackageName(), param.getClassLoader());
+        route(param.getPackageName(), param.getClassLoader(), param.getApplicationInfo());
     }
 
-    private void route(String packageName, ClassLoader classLoader) {
+    private void route(String packageName, ClassLoader classLoader,
+            android.content.pm.ApplicationInfo applicationInfo) {
         try {
             if (packageName == null) {
                 return;
@@ -208,7 +222,7 @@ public class VectorModule extends XposedModule {
                 SystemHooks.install(classLoader);
                 return;
             }
-            AppHost.install(packageName, classLoader);
+            AppHost.install(packageName, classLoader, applicationInfo);
         } catch (Throwable t) {
             Logx.e("could not install into " + packageName, t);
         }

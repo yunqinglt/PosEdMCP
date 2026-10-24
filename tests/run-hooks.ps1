@@ -14,7 +14,7 @@ try {
     $xposedJar = Get-ChildItem -LiteralPath "$GradleCache/de.robv.android.xposed/api/82" -Recurse -Filter '*.jar' | Select-Object -First 1 -ExpandProperty FullName
     $classpath = "$jsonJar;$luaJar;$xposedJar"
     New-Item -ItemType Directory -Force .tools/test-classes | Out-Null
-    & "$JavaDirectory/bin/javac.exe" -cp $classpath -d .tools/test-classes tests/HooksRegression.java app/src/main/java/dev/posedmcp/plugin/HookApi.java app/src/main/java/dev/posedmcp/xposed/Framework.java app/src/main/java/dev/posedmcp/xposed/XposedHookApi.java app/src/main/java/dev/posedmcp/xposed/HookRegistry.java
+    & "$JavaDirectory/bin/javac.exe" -cp $classpath -d .tools/test-classes tests/HooksRegression.java app/src/main/java/dev/posedmcp/plugin/HookApi.java app/src/main/java/dev/posedmcp/xposed/Framework.java app/src/main/java/dev/posedmcp/xposed/XposedHookApi.java app/src/main/java/dev/posedmcp/xposed/HookRegistry.java app/src/main/java/dev/posedmcp/xposed/HookVisibility.java
     if ($LASTEXITCODE -ne 0) { throw 'Compilation failed' }
     & "$JavaDirectory/bin/java.exe" -cp ".tools/test-classes;$classpath" dev.posedmcp.xposed.HooksRegression
     if ($LASTEXITCODE -ne 0) { throw 'Regression failed' }

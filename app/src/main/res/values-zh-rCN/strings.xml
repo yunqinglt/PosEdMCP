@@ -252,10 +252,10 @@
     <string name="special_settings">特殊设置…</string>
 
     <!-- 特殊设置：随 APK 内置的反制措施 -->
-    <string name="special_intro">这是奈何桥自带的预设钩子，用于增强自身功能。它们不是模型装的钩子：不会出现在 Hooks 页面，也删不掉——只能挂起。每一条都指向系统框架，所以这里出错就是在整个手机所依赖的那个进程里出错。</string>
+    <string name="special_intro">内置的作用域策略和后台保护独立于「钩子」库。下方各厂商的后台保护作用于系统框架，在那里修改钩子会影响整个手机所依赖的进程。</string>
     <string name="special_none">这台机器上还没有写好的增强钩子。这些都是针对特定厂商的ROM写的，而这个系统不在其中。</string>
     <string name="special_athena_title">反制雅典娜（危险）</string>
-    <string name="special_athena_blurb">ColorOS 会偷偷杀死应用：动手的是雅典娜，日志里是 \'o-stop\'，触发点是"从最近任务划掉"和"息屏清理"。打开后，雅典娜会对奈何桥宽容，而不影响其他策略。它同时看住 HANS——ColorOS 的 cgroup 冻结管理器：探针冻结某个应用期间，HANS 不得解冻它。</string>
+    <string name="special_athena_blurb">保护奈何桥及其子进程免遭雅典娜清理，并在 Hans 冻结进程、网络和 Binder 前予以豁免。不影响其他应用和用户主动强行停止；保留探针的 cgroup 冻结保护。需要系统框架作用域，ROM 接口不兼容时会报告钩子失败。</string>
 
     <string name="special_powerkeeper_title">澎湃优化（危险）</string>
     <string name="special_powerkeeper_blurb">澎湃 OS 会偷偷杀死应用，而且入口不止一个：一键清理、息屏清理、上划清理。它们最后都落到系统里同一个地方，各带一个自己的理由——OneKeyClean、LockScreenClean、SwipeUpClean 之类。打开后这些不再作用于奈何桥；其它应用以及其它理由都不受影响。</string>
@@ -306,4 +306,16 @@
     <string name="special_deploy_title">帮助Deploy</string>
     <string name="special_deploy_athena_blurb">ColorOS：保护 Deploy，拦截雅典娜后台强停，并避免 Hans 冻结进程、网络和 Binder 调用。其他应用和用户主动强停不受影响。与奈何桥自身保护开关独立，需要系统框架作用域；ROM 接口不匹配会报告钩子失败。</string>
     <string name="special_deploy_powerkeeper_blurb">HyperOS：让已知后台清理原因的强停跳过 Deploy 及其子进程。其他应用和用户主动强停不受影响。与奈何桥自身保护开关独立，需要系统框架作用域。</string>
+    <string name="export_logs">导出诊断日志…</string>
+    <string name="logs_collecting">正在收集诊断日志…</string>
+    <string name="logs_saved">诊断 ZIP 已保存，分享前请检查日志内容。</string>
+    <string name="logs_failed">日志导出失败：%1$s</string>
+    <string name="scope_policy_title">作用域应用策略</string>
+    <string name="scope_policy_body">适用于模块作用域内第三方应用的内置钩子，独立于「钩子」库。保存后重启目标应用生效；系统应用和系统框架不启用这些策略。</string>
+    <string name="scope_concealment">隐藏作用域应用中的模块痕迹</string>
+    <string name="scope_ad_dns">过滤广告域名解析</string>
+    <string name="scope_ad_dns_body">通过 libc getaddrinfo 过滤手动配置的域名。普通域名仅精确匹配，*.example.com 仅匹配子域名。不附带域名列表；共用域名可能同时承载正常功能。需要框架提供原生钩子接口，不覆盖自建 DNS、直连 IP 或已有连接。</string>
+    <string name="scope_domain_hint">每行一个域名，例如 ads.example.com</string>
+    <string name="scope_policy_save">保存作用域策略</string>
+    <string name="scope_policy_saved">已保存，重启目标作用域应用后生效。</string>
 </resources>

@@ -58,6 +58,7 @@ public final class BridgeCredentials {
         }
         publishToLegacyPrefs(context, bridgeToken, bridgePort);
         publishToExternalMedia(context, bridgeToken, bridgePort);
+        BridgeBootstrap.publish(context);
     }
 
     private static void publishToLegacyPrefs(Context context, String bridgeToken, int bridgePort) {

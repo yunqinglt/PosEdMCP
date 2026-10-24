@@ -52,8 +52,9 @@ public final class NativeRuntime {
      * describe another application it cannot see. The app it belongs to knows,
      * so it says so over the connection it already has.
      */
-    public static void setModuleApk(String path) {
+    public static synchronized void setModuleApk(String path) {
         if (path != null && !path.isEmpty()) {
+            if (!ready && !path.equals(moduleApk)) status = "not attempted";
             moduleApk = path;
         }
     }
@@ -161,6 +162,9 @@ public final class NativeRuntime {
     // ---- the library -----------------------------------------------------
 
     static native String probe();
+
+    static native String configureAdDns(String[] domains);
+    static native String adDnsStatus();
 
     static native String lastError();
 
