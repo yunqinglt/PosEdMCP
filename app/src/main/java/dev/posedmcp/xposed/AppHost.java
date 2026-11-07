@@ -245,10 +245,17 @@ public final class AppHost {
             JSONObject policy = new JSONObject(raw);
             boolean conceal = policy.optBoolean("concealment", true);
             ScopeConcealment.configure(loader, conceal);
+            boolean extended = conceal && policy.optBoolean("concealment_extended", false)
+                    && dev.posedmcp.state.PackageTargets.includes(policy.optJSONArray("concealment_extended_packages"), pkg);
+            ExtendedConcealment.configure(loader, extended);
             DexPathConcealment.configure(loader, conceal);
             FrameworkFileConcealment.configure(loader, conceal);
             PackageConcealment.configure(loader, conceal, pkg);
-            NativeFileConcealment.configure(conceal, pkg);
+            // Global libc trampolines can conflict with an app's native loader/protector.
+            // Keep the Java policies usable without installing these experimental hooks.
+            NativeFileConcealment.configure(conceal
+                    && policy.optBoolean("concealment_native_files", false), pkg);
+            NativeMountConcealment.configure(extended && policy.optBoolean("concealment_native_mount", false), pkg);
             AdDnsPolicy.configure(policy);
         } catch (Throwable t) {
             Logx.w("built-in scope policy failed for " + pkg + ": " + t);
@@ -257,8 +264,10 @@ public final class AppHost {
 
     private static JSONObject builtinStatus() throws org.json.JSONException {
         return ScopeConcealment.status().put("packages", PackageConcealment.status())
+                .put("extended", ExtendedConcealment.status())
                 .put("dexPaths", DexPathConcealment.status())
                 .put("frameworkFiles", FrameworkFileConcealment.status())
+                .put("nativeMount", NativeMountConcealment.status())
                 .put("files", NativeFileConcealment.status());
     }
 

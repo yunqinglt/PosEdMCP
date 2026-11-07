@@ -4,14 +4,17 @@ import android.content.pm.PackageManager;
 import dev.posedmcp.Logx;
 import dev.posedmcp.plugin.HookApi;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
+import java.util.WeakHashMap;
+import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 import org.json.JSONObject;
 
 /** Filters PM results at their concrete implementations, retaining Context and permissions. */
@@ -19,6 +22,8 @@ final class PackageConcealment {
     private static final List<HookApi.Unhook> HANDLES = new ArrayList<>();
     private static final Set<Method> MEMBERS = new HashSet<>();
     private static final Set<Class<?>> SURFACES = new HashSet<>();
+    private static final Set<Method> STDOUT_HOOKS = new HashSet<>();
+    private static final Map<Process, OutputView> OUTPUTS = Collections.synchronizedMap(new WeakHashMap<>());
     private static final Set<String> LISTS = Set.of("getInstalledPackages", "getInstalledApplications",
             "getPackagesHoldingPermissions", "getPersistentApplications", "getPreferredPackages",
             "getPackagesForUid", "getAllPackages", "queryIntentActivities", "queryIntentActivityOptions",
@@ -61,11 +66,20 @@ final class PackageConcealment {
             } catch (Throwable t) { failure("ContextImpl#getPackageManager", t); }
             keep(api.hook(ProcessBuilder.class.getDeclaredMethod("start"), new HookApi.Callback() {
                 @Override public void after(HookApi.HookParam p) {
-                    if (enabled && ScopeConcealment.externalCaller() && p.throwable() == null
-                            && p.result() instanceof Process && !(p.result() instanceof FilteredProcess)
-                            && PackageListFilter.command(((ProcessBuilder) p.thisObject()).command())) {
-                        p.setResult(new FilteredProcess((Process) p.result(), target));
-                    }
+                    if (!enabled || p.throwable() != null || !(p.result() instanceof Process)) return;
+                    ProcessBuilder builder = (ProcessBuilder) p.thisObject();
+                    if (builder.redirectOutput() != ProcessBuilder.Redirect.PIPE || builder.redirectErrorStream()) return;
+                    boolean packages = PackageListFilter.command(builder.command());
+                    MountViews.Format mount = !packages && ExtendedConcealment.isEnabled()
+                            ? MountViews.command(builder.command()) : null;
+                    if ((!packages && mount == null) || !ScopeConcealment.externalCaller()) return;
+                    Process process = (Process) p.result();
+                    String scopedTarget = target;
+                    OutputView stdout = mount != null ? new OutputView(
+                            () -> enabled && ExtendedConcealment.isEnabled(),
+                            line -> MountViews.hidden(line, mount))
+                            : new OutputView(() -> enabled, line -> PackageListFilter.hiddenLine(line, scopedTarget));
+                    attachStdout(api, process, stdout);
                 }
             }), "ProcessBuilder#start");
         } catch (Throwable t) { failure("package policy", t); }
@@ -143,25 +157,41 @@ final class PackageConcealment {
         return out == null ? original : out;
     }
 
-    private static final class FilteredProcess extends Process {
-        private final Process delegate;
-        private final InputStream stdout;
-        FilteredProcess(Process delegate, String target) {
-            this.delegate = delegate;
-            stdout = new PackageListFilter(delegate.getInputStream(), target,
-                    () -> enabled);
+    /** Keep the actual Process and all of its platform-specific lifecycle methods. */
+    private static synchronized void attachStdout(HookApi api, Process process, OutputView view) {
+        try {
+            Method getter = process.getClass().getMethod("getInputStream");
+            if (!STDOUT_HOOKS.contains(getter)) {
+                HookApi.Unhook hook = api.hook(getter, new HookApi.Callback() {
+                    @Override public void after(HookApi.HookParam p) {
+                        if (p.throwable() != null || !(p.result() instanceof InputStream)) return;
+                        OutputView policy = OUTPUTS.get(p.thisObject());
+                        if (policy != null) p.setResult(policy.stream((InputStream) p.result()));
+                    }
+                });
+                if (hook == null || !hook.isActive()) throw new IllegalStateException("hook declined");
+                HANDLES.add(hook);
+                STDOUT_HOOKS.add(getter);
+            }
+            OUTPUTS.put(process, view);
+        } catch (Throwable t) { failure("process stdout", t); }
+    }
+
+    private static final class OutputView {
+        final BooleanSupplier active;
+        final Predicate<String> hidden;
+        private InputStream view;
+        OutputView(BooleanSupplier active, Predicate<String> hidden) {
+            this.active = active;
+            this.hidden = hidden;
         }
-        @Override public OutputStream getOutputStream() { return delegate.getOutputStream(); }
-        @Override public InputStream getInputStream() { return stdout; }
-        @Override public InputStream getErrorStream() { return delegate.getErrorStream(); }
-        @Override public int waitFor() throws InterruptedException { return delegate.waitFor(); }
-        @Override public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException {
-            return delegate.waitFor(timeout, unit);
+        synchronized InputStream stream(InputStream original) {
+            if (view == null) {
+                if (!active.getAsBoolean()) return original;
+                view = new PackageListFilter(original, active, hidden);
+            }
+            return view;
         }
-        @Override public int exitValue() { return delegate.exitValue(); }
-        @Override public void destroy() { delegate.destroy(); }
-        @Override public Process destroyForcibly() { delegate.destroyForcibly(); return this; }
-        @Override public boolean isAlive() { return delegate.isAlive(); }
     }
 
     private static void keep(HookApi.Unhook handle, String subject) {

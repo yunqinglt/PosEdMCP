@@ -100,7 +100,8 @@ public final class McpServer {
         if (isRunning()) {
             return;
         }
-        HttpTransport t = new HttpTransport(prefs.mcpPort(), this::route);
+        HttpTransport t = new HttpTransport(prefs.mcpPort(),
+                EndpointAddresses.bindAddress(prefs.mcpLanAccess()), this::route);
         t.start();
         transport = t;
 
@@ -132,6 +133,28 @@ public final class McpServer {
             t.stop();
         }
         events.setListener(null);
+    }
+
+    /** Rebind only HTTP; module peers, tokens and the confirmation gate stay live. */
+    public synchronized void setLanAccess(boolean enabled) throws Exception {
+        boolean previous = prefs.mcpLanAccess();
+        if (enabled == previous) return;
+        HttpTransport old = transport;
+        if (old == null || !old.isRunning()) { prefs.setMcpLanAccess(enabled); return; }
+        old.stop();
+        transport = null;
+        HttpTransport next = new HttpTransport(prefs.mcpPort(),
+                EndpointAddresses.bindAddress(enabled), this::route);
+        try {
+            next.start();
+            prefs.setMcpLanAccess(enabled);
+            transport = next;
+        } catch (Exception failure) {
+            next.stop();
+            try { prefs.setMcpLanAccess(previous); } catch (Exception restore) { failure.addSuppressed(restore); }
+            try { old.start(); transport = old; } catch (Exception restore) { failure.addSuppressed(restore); }
+            throw failure;
+        }
     }
 
     private HttpTransport.Response route(HttpTransport.Request request) {
@@ -224,7 +247,7 @@ public final class McpServer {
         if (header != null && header.toLowerCase(Locale.ROOT).startsWith("bearer ")) {
             presented = header.substring(7).trim();
         }
-        if (presented == null) {
+        if (presented == null && "GET".equals(request.method)) {
             // EventSource cannot set headers, so the query string is accepted
             // for the read-only event stream.
             presented = request.query.get("token");
@@ -435,7 +458,10 @@ public final class McpServer {
     /** Endpoint details for the app UI. */
     public Map<String, String> describe() {
         Map<String, String> out = new LinkedHashMap<>();
-        out.put("url", "http://127.0.0.1:" + prefs.mcpPort() + "/mcp");
+        boolean lan = prefs.mcpLanAccess();
+        out.put("url", EndpointAddresses.urls(prefs.mcpPort(), lan).get(0));
+        out.put("bindAddress", EndpointAddresses.bindAddress(lan));
+        out.put("lanAccess", String.valueOf(lan));
         out.put("token", prefs.mcpToken());
         out.put("running", String.valueOf(isRunning()));
         return out;

@@ -6,12 +6,12 @@
 
 长期反馈与后续计划：[开发记忆](docs/DEVELOPMENT_MEMORY.md)。1.1.7 加入独立启动配置进程、诊断 ZIP 导出、作用域隐藏策略及可配置的原生广告域名过滤。
 
-1.1.8 提供普通版和 rootless 版，增加 dex 路径视图和定点框架文件规则。[作用域隐藏策略](docs/CONCEALMENT.md)仍属实验功能，兼容范围及验证边界见[发布说明](docs/RELEASE_1.1.8.md)。
+1.1.9 提供普通版与 rootless 版，增加可选局域网访问、按包名选择的实验隐藏，以及 Rootless 标识。[发布说明](docs/RELEASE_1.1.9.md)列出安装包和已知限制。
 
 Android 上给本机 Agent 用的 MCP 服务器。LSPosed 模块 + root shell，让跑在手机里的
 Agent 能真正操作这台设备。
 
-不是"远程控制"：服务器跑在手机上，Agent 也在手机上，网络只走 `127.0.0.1`。
+服务器运行在手机上，默认只接受本机连接。需要时可在主页开启[局域网访问](docs/COMPATIBILITY_AND_LAN.md)。
 
 ## 它做什么
 
@@ -182,9 +182,9 @@ adb install -r -t app/build/outputs/apk/debug/app-debug.apk
 
 ## 接上客户端
 
-服务器监听 `127.0.0.1:8765`，端点 `/mcp`（MCP Streamable HTTP），Bearer token 认证。
+服务器默认监听 `127.0.0.1:8765`，端点 `/mcp`（MCP Streamable HTTP），Bearer token 认证。
 
-同机客户端直接连 `http://127.0.0.1:8765/mcp`。PC 上的客户端先 `adb forward`。
+同机客户端直接连 `http://127.0.0.1:8765/mcp`。PC 上的客户端可用 `adb forward`，或在手机上开启局域网访问。
 客户端提示词见 [docs/MCP_PROMPT.md](docs/MCP_PROMPT.md)。`/health` 不需要认证，用来探活。
 
 测试时建议绕开 `adb forward`——它在应用进程被替换后可能静默失效：

@@ -457,6 +457,12 @@ public final class McpService extends Service {
         return prefs == null ? Prefs.DEFAULT_MCP_PORT : prefs.mcpPort();
     }
 
+    public synchronized void setMcpLanAccess(boolean enabled) throws Exception {
+        if (mcp == null) prefs.setMcpLanAccess(enabled);
+        else mcp.setLanAccess(enabled);
+        updateNotification();
+    }
+
     public int bridgePort() {
         return prefs == null ? Prefs.DEFAULT_BRIDGE_PORT : prefs.bridgePort();
     }
@@ -624,7 +630,8 @@ public final class McpService extends Service {
             return;
         }
         String handoff = ConfirmationGate.handoffLeft(this);
-        String status = "127.0.0.1:" + mcpPort() + " · "
+        String status = dev.posedmcp.mcp.EndpointAddresses.bindAddress(prefs.mcpLanAccess())
+                + ":" + mcpPort() + " · "
                 + getString(systemBridgeConnected()
                         ? R.string.notif_system_ok : R.string.notif_system_offline)
                 + " · " + getResources().getQuantityString(R.plurals.notif_peers,

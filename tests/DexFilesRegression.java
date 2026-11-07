@@ -7,7 +7,7 @@ import java.io.*;
 import java.lang.reflect.*;
 import java.util.*;
 
-/** Production discovery, Field.get and File callbacks; no synthetic missing fields. */
+/** Production Field.get and File callbacks; metadata lookups remain unhooked. */
 public final class DexFilesRegression {
     static int assertions;
     static void check(boolean value, String why) { assertions++; if (!value) throw new AssertionError(why); }
@@ -28,13 +28,9 @@ public final class DexFilesRegression {
         DexPathList.Element module = new DexPathList.Element("/data/app/~~hash/dev.posedmcp-HASH/base.apk");
         list.dexElements = new DexPathList.Element[]{app, bridge, module};
         Field field = DexPathList.class.getDeclaredField("dexElements");
-        RuntimePoliciesRegression.Param discovery = new RuntimePoliciesRegression.Param(DexPathList.class, field, "dexElements");
-        hooks.callbacks.get("java.lang.Class#getDeclaredField").after(discovery);
-        check(discovery.result == field && discovery.thrown == null, "retain Field and successful lookup");
-        RuntimePoliciesRegression.Param fields = new RuntimePoliciesRegression.Param(DexPathList.class, DexPathList.class.getDeclaredFields());
-        Object originalFields = fields.result;
-        hooks.callbacks.get("java.lang.Class#getDeclaredFields").after(fields);
-        check(fields.result == originalFields, "retain fields and metadata");
+        check(!hooks.callbacks.containsKey("java.lang.Class#getDeclaredField"), "metadata lookup has no hook");
+        check(!hooks.callbacks.containsKey("java.lang.Class#getDeclaredFields")
+                && Arrays.asList(DexPathList.class.getDeclaredFields()).contains(field), "retain fields and metadata");
         HookApi.Callback get = hooks.callbacks.get("java.lang.reflect.Field#get");
         RuntimePoliciesRegression.Param value = new RuntimePoliciesRegression.Param(field, list.dexElements, list);
         get.after(value);

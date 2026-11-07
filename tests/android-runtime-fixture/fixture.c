@@ -2,6 +2,7 @@
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -22,4 +23,42 @@ JNIEXPORT jstring JNICALL Java_dev_deploy_fixture_Results_probeFiles(JNIEnv*e,jc
  long pid=syscall(__NR_getpid);
  char out[512];snprintf(out,sizeof out,"{\"access\":%d,\"accessErrno\":%d,\"stat\":%d,\"statErrno\":%d,\"open\":%d,\"openErrno\":%d,\"syscall\":%ld,\"syscallErrno\":%ld,\"getpid\":%ld}",a,ae,st,se,fd,oe,call,ce,pid);
  (*e)->ReleaseStringUTFChars(e,path,p);return (*e)->NewStringUTF(e,out);
+}
+
+JNIEXPORT jstring JNICALL Java_dev_deploy_fixture_Results_swapPath(JNIEnv* e,jclass c,jstring path) {
+    (void)c;
+    const char* original = getenv("PATH");
+    jstring saved = original ? (*e)->NewStringUTF(e, original) : NULL;
+    const char* value = path ? (*e)->GetStringUTFChars(e, path, NULL) : NULL;
+    if (value) {
+        setenv("PATH", value, 1);
+        (*e)->ReleaseStringUTFChars(e, path, value);
+    } else if (!path) unsetenv("PATH");
+    return saved;
+}
+
+JNIEXPORT jstring JNICALL Java_dev_deploy_fixture_Results_systemOutput(JNIEnv* e,jclass c,jstring command) {
+    (void)c;
+    int fd = (int)syscall(__NR_memfd_create, "fixture-stdout", 0), saved = dup(STDOUT_FILENO);
+    if (fd < 0 || saved < 0 || dup2(fd, STDOUT_FILENO) < 0) {
+        if (saved >= 0) close(saved);
+        if (fd >= 0) close(fd);
+        return (*e)->NewStringUTF(e, "-1\n");
+    }
+    const char* cmd = (*e)->GetStringUTFChars(e, command, NULL);
+    int status = cmd ? system(cmd) : -1;
+    dup2(saved, STDOUT_FILENO);
+    close(saved);
+    if (cmd) (*e)->ReleaseStringUTFChars(e, command, cmd);
+    char* output = calloc(1, 1024 * 1024);
+    if (!output) { close(fd); return (*e)->NewStringUTF(e, "-1\n"); }
+    int offset = snprintf(output, 64, "%d\n", status);
+    lseek(fd, 0, SEEK_SET);
+    ssize_t count;
+    while (offset < 1024 * 1024 - 1
+            && (count = read(fd, output + offset, 1024 * 1024 - 1 - offset)) > 0) offset += count;
+    close(fd);
+    jstring view = (*e)->NewStringUTF(e, output);
+    free(output);
+    return view;
 }

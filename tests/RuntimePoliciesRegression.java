@@ -96,7 +96,7 @@ public final class RuntimePoliciesRegression {
         hooks.callbacks.get("java.lang.StackTraceElement#getClassName").after(traceOther);
         check(traceOther.result.equals("example.app.Crash"), "retain application stack class");
         for (String name : new String[]{"de.robv.android.xposed.XposedBridge",
-                "com.android.internal.os.ZygoteInit", "com.android.internal.os.ZygoteInit$MethodAndArgsCaller"}) {
+                "com.android.internal.os.ZygoteInit", "com.android.internal.os.ZygoteInit$MethodAndArgsCaller", "LSPHooker_"}) {
             StackTraceElement frame = new StackTraceElement(name, "handleHookedMethod", "XposedBridge.java", 42);
             Param clazz = new Param(frame, name);
             hooks.callbacks.get("java.lang.StackTraceElement#getClassName").after(clazz);
@@ -114,6 +114,8 @@ public final class RuntimePoliciesRegression {
         Param zygoteClass = new Param(new ClassLoader(){}, null, "com.android.internal.os.ZygoteInit");
         lookup.before(zygoteClass);
         check(zygoteClass.thrown == null, "Zygote stack rule never hides a platform class lookup");
+        check(!(Boolean)callStatic("dev.posedmcp.xposed.ScopeConcealment", "hiddenStackClass",
+                new Class<?>[]{String.class}, "LSPHooker_Helper"), "unrelated similarly named class preserved");
         Param ownMethod = new Param(new StackTraceElement("example.app.Crash", "handleHookedMethod", "Own.java", 1),
                 "handleHookedMethod");
         hooks.callbacks.get("java.lang.StackTraceElement#getMethodName").after(ownMethod);
@@ -121,6 +123,11 @@ public final class RuntimePoliciesRegression {
         for (String jar : new String[]{"XposedBridge.jar", "XPOSEDBRIDGE.JAR"}) {
             check((Boolean)callStatic("dev.posedmcp.xposed.ScopeConcealment", "hiddenMap",
                     new Class<?>[]{String.class}, "7000-8000 r-xp /system/framework/" + jar), "bridge jar maps " + jar);
+        }
+        for (String name : List.of("XposedBridge.jar", "libposednative.so")) {
+            check((Boolean)callStatic("dev.posedmcp.xposed.ScopeConcealment", "hiddenMap",
+                    new Class<?>[]{String.class}, "7000-8000 r-xp /memfd:" + name + " (deleted)"),
+                    "exact memfd mapping " + name);
         }
         Method javaMethod = String.class.getDeclaredMethod("isEmpty");
         Method jni = Object.class.getDeclaredMethod("hashCode");
@@ -136,6 +143,12 @@ public final class RuntimePoliciesRegression {
         Object stream = new Object(), decoder = new Object();
         hooks.callbacks.get("java.io.FileInputStream#<init>").after(new Param(stream, null, "/proc/self/maps"));
         hooks.callbacks.get("java.io.InputStreamReader#<init>").after(new Param(decoder, null, stream));
+        for (String ordinaryPath : List.of("/data/app/example.app/liblspd-helper.so",
+                "/data/app/example.app/lsposed-notes.txt", "/data/app/example.app/libxposed-client.so",
+                "/data/app/example.app/XposedBridge.jar.backup", "/memfd:XposedBridge.jar.backup (deleted)")) {
+            check(!(Boolean)callStatic("dev.posedmcp.xposed.ScopeConcealment", "hiddenMap",
+                    new Class<?>[]{String.class}, "7000-8000 r-xp " + ordinaryPath), "preserve ordinary maps " + ordinaryPath);
+        }
         String hidden = "7000-8000 r-xp /data/app/dev.posedmcp-xxx/base.apk";
         String real = "8000-9000 r-xp /system/lib64/libc.so";
         BufferedReader reader = new BufferedReader(new StringReader(hidden + "\n" + real + "\n"));

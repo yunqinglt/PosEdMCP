@@ -7,6 +7,8 @@ public final class Results {
  public static native String rawMaps();
  public static native void createJarMappings();
  public static native String probeFiles(String path);
+ public static native String swapPath(String path);
+ public static native String systemOutput(String command);
  public static JSONObject collect(android.content.Context c) throws Exception {
  JSONObject r=new JSONObject(); r.put("pid",android.os.Process.myPid()).put("provider",providerValue).put("application",applicationValue).put("providerTime",providerTime);
  createJarMappings();
@@ -29,6 +31,10 @@ public final class Results {
  StringBuilder maps=new StringBuilder(); try(BufferedReader b=new BufferedReader(new FileReader("/proc/self/maps"))) { String line; while((line=b.readLine())!=null) maps.append(line).append('\n'); }
  r.put("javaModuleMaps",count(maps.toString())).put("nativeModuleMaps",count(rawMaps()));
  r.put("javaBridgeJarMaps",jarCount(maps.toString())).put("nativeBridgeJarMaps",jarCount(rawMaps()));
+ r.put("extended",ExtendedProbe.collect(c));
+ if (((android.app.Activity)c).getIntent().getBooleanExtra("mount_probe", false)) {
+  r.put("mountProbe", MountProbe.collect());
+ }
  try(BufferedReader b=new BufferedReader(new StringReader("libposednative.so\nkeep\n"))) { r.put("ordinaryReader",b.readLine()+"|"+b.readLine()+"|"+b.readLine()); }
  r.put("dnsExact",resolve("example.com",false)).put("dnsWildcard",resolve("ad.ads.example.com",false)).put("dnsNumeric",resolve("127.0.0.1",true)).put("dnsLocalhost",resolve("localhost",false));
  return r; }

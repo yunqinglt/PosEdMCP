@@ -85,6 +85,17 @@
     <string name="clip_token">奈何桥 token</string>
     <string name="toast_tokens_rotated">凭据已更换</string>
     <string name="body_endpoint_localhost">监听只绑定在 127.0.0.1。要从电脑经 USB 访问：adb forward tcp:%1$d tcp:%1$d</string>
+    <string name="action_mcp_lan">切换到局域网访问</string>
+    <string name="action_mcp_local">切换到仅本机访问</string>
+    <string name="body_endpoint_lan">正在监听所有 IPv4 接口（0.0.0.0:%1$d）。请使用上方网络地址和 Bearer token 连接。HTTP 未加密，请在可信网络中使用。切换模式会断开当前 MCP 客户端连接。</string>
+    <string name="mcp_network_failed">切换网络模式失败：%1$s</string>
+    <string name="scope_native_files">原生文件隐藏（实验）</string>
+    <string name="scope_extended">扩展 Java 隐藏（实验）</string>
+    <string name="scope_extended_body">默认关闭，仅对下方填写的应用生效。过滤选定的堆栈、类、PATH、Java 属性、proc 文件和挂载查询视图。保存后重新打开目标应用，便于对照。</string>
+    <string name="scope_native_mount">原生挂载查询（实验）</string>
+    <string name="scope_native_mount_body">默认关闭，沿用扩展 Java 隐藏的应用名单。过滤原生 system(\"mount\") 输出中的指定挂载记录，需要框架支持原生钩子。修改后关闭并重新打开目标应用。</string>
+    <string name="scope_extended_targets">扩展规则应用包名（每行一个）</string>
+    <string name="scope_native_files_body">默认关闭。此项安装全局 libc 文件钩子，可能与原生加载器及应用保护冲突；已知不兼容的应用会自动跳过。应用启动异常时请关闭此项；修改后关闭并重新打开目标应用。</string>
 
     <string name="section_actions">操作</string>
     <string name="action_stop_service">停止服务</string>
@@ -313,7 +324,7 @@
     <string name="scope_policy_title">作用域应用策略</string>
     <string name="scope_policy_body">适用于模块作用域内第三方应用的内置钩子，独立于「钩子」库。保存后重启目标应用生效；系统应用和系统框架不启用这些策略。</string>
     <string name="scope_concealment">隐藏作用域应用中的模块痕迹</string>
-    <string name="scope_concealment_body">从安装列表、单包探测、包列表命令输出及受支持的原生目录探测中隐藏 PosEdMCP、Display、Deploy 和常见框架管理器，保留作用域应用自身。同时处理模块/zygote 堆栈与桥接 JAR 映射行。不撤销应用权限；原生过滤需要框架支持。</string>
+    <string name="scope_concealment_body">从安装列表、单包探测和包列表命令输出中隐藏 PosEdMCP、Display、Deploy 和常见框架管理器，保留作用域应用自身。同时处理模块/zygote 堆栈、模块 Dex 路径和桥接 JAR 映射行。不撤销应用权限；原生文件过滤需单独开启并由框架支持。</string>
     <string name="scope_ad_dns">过滤广告域名解析</string>
     <string name="scope_ad_dns_body">通过 libc getaddrinfo 过滤手动配置的域名。普通域名仅精确匹配，*.example.com 仅匹配子域名。不附带域名列表；共用域名可能同时承载正常功能。需要框架提供原生钩子接口，不覆盖自建 DNS、直连 IP 或已有连接。</string>
     <string name="scope_domain_hint">每行一个域名，例如 ads.example.com</string>

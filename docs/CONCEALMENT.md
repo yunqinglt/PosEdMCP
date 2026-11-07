@@ -1,9 +1,11 @@
-# 作用域隐藏策略 1.1.8（实验功能）
+# 作用域隐藏策略（实验功能）
 
-1.1.8 稳定版包含以下实验性策略。策略仍有第三方应用兼容问题，以下检查只证明列明入口与控制例的行为；可在特殊设置中关闭。
+1.1.8 稳定版包含以下实验性策略。1.1.9 收紧原生开关、Dex 元数据和 maps 规则，增加按包名选择的扩展 Java 视图，详见 [DEX 调查](DEX_COMPATIBILITY_1.1.9.md)与[兼容性调查及局域网访问](COMPATIBILITY_AND_LAN.md)。策略仍有第三方应用兼容问题，以下检查只证明列明入口与控制例的行为；可在特殊设置中关闭。
 
 在「更多信息 → 特殊设置」中统一开启或关闭。只对模块作用域内的第三方应用安装，
 不进入系统应用或 system_server；内置钩子独立于普通钩子库。保存后重新打开目标应用。
+
+后续的 PATH、Java 属性、proc 挂载、Runtime.exec 和独立原生 mount 开关见 [环境与挂载](ENVIRONMENT_CONCEALMENT.md)。
 
 ## 包名范围与权限
 
@@ -39,7 +41,7 @@
 命令规则只识别普通包列表命令与简单 `sh -c`，不改写命令、不提权，不解析任意管道或复合 shell。
 stdout 按行过滤、保留 CRLF/EOF 和非 package 行，单行缓冲上限 64 KiB。
 原生规则保留其他路径和目标自身；处理目录 fd 相对路径与词法 `.`/`..`，不会调用 realpath 暴露文件存在性。
-原生 hook 必须由框架提供，实际安装数、失败数及命中数由 `scope_status.builtins.files` 报告。
+原生 hook 必须由框架提供；1.1.9 需独立开启「原生文件隐藏（实验）」，默认关闭，已知中国移动冲突会跳过。实际安装数、失败数及命中数由 `scope_status.builtins.files` 报告。
 
 ## maps 与堆栈
 
@@ -66,14 +68,14 @@ length/lastModified 为 0，打开为 FileNotFoundException/native ENOENT，Java
 元数据回调保留已有异常与 Java 模块内部访问，普通 framework.jar 不受规则影响。
 
 真机对照：反射字段始终存在，开启后返回视图 1 项、关闭后 2 项，Unsafe 控制读取的缓存一直为 2 项。
-新增 dex 路径钩子 3 个、Java 文件钩子 16 个均安装 0 失败。系统本身没有桥接 JAR，
+1.1.8 验证时 dex 路径钩子 3 个、Java 文件钩子 16 个均安装 0 失败；1.1.9 移除两个无必要的字段查询钩子，仅保留 Field.get。系统本身没有桥接 JAR，
 其 exists=false 不能单独当作本模块成功隐藏的证据；主机使用存在的模拟结果验证回调，原生命中计数也递增。
 
 ## 验证与边界
 
 主机执行生产回调与流过滤：包名边界、UID 混合结果、Binder slice 副本、原权限异常、
 开关、命令输出的字节/EOF、连续 maps 行、堆栈 Getter 和路径归一化均有回归。
-`tests/run-runtime.ps1` 共通过 148 项断言；`tests/run-hooks.ps1` 的现有脚本回归通过。
+`tests/run-runtime.ps1` 当前共通过 213 项断言；`tests/run-hooks.ps1` 的现有脚本回归通过。以下设备计数为 1.1.8 的验证记录，新版本以兼容性文档为准。
 最终 APK 的 assembleDebug、lintDebug 与签名校验完成，lint 为 0 error；私有框架入口仍有预期警告。
 
 Android 16 / LSPosed 1.10.2：测试应用持有 QUERY_ALL_PACKAGES，PackageManager 及其缓存对象未替换，

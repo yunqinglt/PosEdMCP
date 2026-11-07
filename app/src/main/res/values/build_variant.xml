@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <bool name="rootless_build">false</bool>
+    <string name="rootless_badge" translatable="false">Rootless</string>
+</resources>

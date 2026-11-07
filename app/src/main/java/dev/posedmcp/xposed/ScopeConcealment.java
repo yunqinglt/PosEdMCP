@@ -16,7 +16,7 @@ import org.json.JSONObject;
 /** Internal hooks. They never register ordinary user hooks or capture arguments. */
 final class ScopeConcealment {
     private static final List<HookApi.Unhook> HANDLES = new ArrayList<>();
-    private static final Map<Object, Boolean> MAP_READERS =
+    private static final Map<Object, MountViews.Format> PROC_READERS =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final ThreadLocal<Boolean> BYPASS = ThreadLocal.withInitial(() -> false);
     private static volatile boolean enabled;
@@ -35,16 +35,26 @@ final class ScopeConcealment {
         if (line == null) return false;
         String value = line.toLowerCase(java.util.Locale.ROOT);
         return value.contains("/dev.posedmcp-") || value.contains("/dev.posedmcp/")
-                || value.contains("libposednative.so") || value.contains("lspd")
-                || value.contains("lsposed") || value.contains("libxposed")
-                || value.contains("xposedbridge.jar")
+                || mappedFile(value, "libposednative.so") || mappedFile(value, "libxposed_art.so")
+                || mappedFile(value, "liblspd.so") || mappedFile(value, "xposedbridge.jar")
+                || value.contains("/data/adb/lspd/") || value.contains("/data/adb/lsposed/")
+                || value.contains("/org.lsposed.lspd-") || value.contains("/org.lsposed.lspd/")
                 || value.contains("memfd:posedmcp");
+    }
+
+    private static boolean mappedFile(String line, String name) {
+        int at = line.lastIndexOf('/');
+        if (at < 0) return false;
+        String leaf = line.substring(at + 1);
+        if (leaf.startsWith("memfd:")) leaf = leaf.substring(6);
+        return leaf.equals(name) || leaf.equals(name + " (deleted)");
     }
 
     // ZygoteInit is a real platform class. Restrict this rule to stack views;
     // hiding it from ClassLoader would break legitimate framework code.
     static boolean hiddenStackClass(String name) {
-        return hiddenClass(name) || "com.android.internal.os.ZygoteInit".equals(name)
+        return hiddenClass(name) || "LSPHooker_".equals(name)
+                || "com.android.internal.os.ZygoteInit".equals(name)
                 || (name != null && name.startsWith("com.android.internal.os.ZygoteInit$"));
     }
 
@@ -67,10 +77,18 @@ final class ScopeConcealment {
     }
 
     static boolean mapsPath(Object arg) {
-        String path = arg instanceof File ? ((File) arg).getPath()
-                : arg instanceof String ? (String) arg : "";
-        return "/proc/self/maps".equals(path) || "/proc/thread-self/maps".equals(path)
-                || ("/proc/" + android.os.Process.myPid() + "/maps").equals(path);
+        String path = ConcealmentPaths.normalized(arg);
+        if ("/proc/self/maps".equals(path) || "/proc/thread-self/maps".equals(path)
+                || ("/proc/" + android.os.Process.myPid() + "/maps").equals(path)) return true;
+        String[] parts = path.split("/");
+        if (parts.length != 6 || !parts[0].isEmpty() || !parts[1].equals("proc") || !parts[3].equals("task")
+                || !parts[5].equals("maps") || !(parts[2].equals("self")
+                || parts[2].equals(String.valueOf(android.os.Process.myPid()))) || parts[4].isEmpty()) return false;
+        for (int i = 0; i < parts[4].length(); i++) {
+            char digit = parts[4].charAt(i);
+            if (digit < '0' || digit > '9') return false;
+        }
+        return true;
     }
 
     static synchronized void configure(ClassLoader loader, boolean active) {
@@ -86,14 +104,15 @@ final class ScopeConcealment {
             HookApi api = Framework.hookApi(loader);
             install(api, BufferedReader.class, "readLine", new Class<?>[0], new HookApi.Callback() {
                 @Override public void after(HookApi.HookParam p) throws Exception {
-                    if (!enabled || BYPASS.get() || p.throwable() != null
-                            || !MAP_READERS.containsKey(p.thisObject())) return;
+                    if (!enabled || BYPASS.get() || p.throwable() != null) return;
+                    MountViews.Format view = PROC_READERS.get(p.thisObject());
+                    if (view == null || (view != MountViews.Format.MAPS && !ExtendedConcealment.isEnabled())) return;
                     String line = (String) p.result();
-                    if (!hiddenMap(line) || internalCaller()) return;
+                    if (!MountViews.hidden(line, view) || internalCaller()) return;
                     BYPASS.set(true);
                     try {
                         BufferedReader reader = (BufferedReader) p.thisObject();
-                        do { line = reader.readLine(); } while (hiddenMap(line));
+                        do { line = reader.readLine(); } while (MountViews.hidden(line, view));
                         // Includes EOF: no fabricated lines, and no recursion on a run
                         // of hidden mappings. Unrelated readers are never rewritten.
                         p.setResult(line);
@@ -107,8 +126,10 @@ final class ScopeConcealment {
                         @Override public void after(HookApi.HookParam p) {
                             if (!enabled || BYPASS.get() || p.throwable() != null || p.args().length == 0) return;
                             Object source = p.args()[0];
-                            if (mapsPath(source) || MAP_READERS.containsKey(source)) {
-                                MAP_READERS.put(p.thisObject(), Boolean.TRUE);
+                            MountViews.Format view = source instanceof String || source instanceof File
+                                    ? MountViews.proc(source) : PROC_READERS.get(source);
+                            if (view != null && (view == MountViews.Format.MAPS || ExtendedConcealment.isEnabled())) {
+                                PROC_READERS.put(p.thisObject(), view);
                             }
                         }
                     }), type + "#<init>");
@@ -185,6 +206,8 @@ final class ScopeConcealment {
                         || name.startsWith("dev.posedmcp.xposed.PackageConcealment")
                         || name.startsWith("dev.posedmcp.xposed.PackageListFilter")
                         || name.startsWith("dev.posedmcp.xposed.DexPathConcealment")
+                        || name.startsWith("dev.posedmcp.xposed.ExtendedConcealment")
+                        || name.startsWith("dev.posedmcp.xposed.EnvironmentViews")
                         || name.startsWith("dev.posedmcp.xposed.FrameworkFileConcealment")) continue;
                 // Framework adapters are on every call; find the actual caller.
                 if (name.startsWith("dev.posedmcp.xposed.XposedHookApi")

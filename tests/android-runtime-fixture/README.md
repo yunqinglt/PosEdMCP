@@ -49,3 +49,16 @@ still contains two. The raw control also documents a bypass; it is not a conceal
 `bridgeFileExists` and `nativeBridgeFile` are compared with the native hit counter, and
 `frameworkFileExists` is the ordinary framework.jar control. A ROM with no bridge JAR already
 returns false/ENOENT in the disabled baseline.
+
+For the 1.1.9 extended policy, select only `dev.deploy.fixture` in the experimental package list.
+`extended` has positive disabled controls for raw serialized stack frames, direct class and class
+resource probes, NIO maps and RandomAccessFile maps. Enabled views remove them while preserving
+the original three-frame cache, ordinary resources, ordinary files and one-argument app-local
+Class.forName resolution. Re-select different packages and restart the fixture: it must reproduce
+the complete disabled baseline with zero extended hooks installed. Missing platform readString
+methods are reported as unsupported, not silently treated as successful reads.
+
+Pass `--ez mount_probe true` to check positive PATH and property controls, proc readers,
+all six Runtime.exec overloads, and native system calls. Test environment and stdout changes
+are restored in the fixture process. A mount namespace without matching rows is a negative
+control only.
