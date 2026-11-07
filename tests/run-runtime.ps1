@@ -8,7 +8,8 @@ try {
     $xposedJar = Get-ChildItem .gradle-home/caches/modules-2/files-2.1/de.robv.android.xposed/api/82 -Recurse -Filter '*.jar' | Select-Object -First 1 -ExpandProperty FullName
     if (!$apiJar) { throw 'Build the app first to resolve the libxposed API' }
     $classpath = "$jsonJar;$apiJar;$xposedJar"
-    $sources = @('tests/RuntimePoliciesRegression.java', 'tests/BootstrapRegression.java', 'tests/PackageVisibilityRegression.java', 'tests/DexFilesRegression.java',
+    $sources = @('tests/RuntimePoliciesRegression.java', 'tests/BootstrapRegression.java', 'tests/PackageVisibilityRegression.java', 'tests/DexFilesRegression.java', 'tests/NativeCompatibilityRegression.java', 'tests/ExtendedConcealmentRegression.java',
+        'tests/EnvironmentConcealmentRegression.java', 'tests/stubs/dev/posedmcp/xposed/NativeRuntime.java',
         'tests/stubs/dalvik/system/DexPathList.java',
         'tests/stubs/android/os/Process.java', 'tests/stubs/android/os/Bundle.java',
         'tests/stubs/android/content/Context.java', 'tests/stubs/android/content/pm/ApplicationInfo.java',
@@ -19,15 +20,21 @@ try {
         'tests/stubs/dev/posedmcp/ipc/FrameworkPreferencesProvider.java',
         'tests/stubs/dev/posedmcp/Logx.java', 'app/src/main/java/dev/posedmcp/plugin/HookApi.java',
         'app/src/main/java/dev/posedmcp/state/DomainRules.java',
+        'app/src/main/java/dev/posedmcp/state/PackageTargets.java',
         'app/src/main/java/dev/posedmcp/state/SavedHook.java',
         'app/src/main/java/dev/posedmcp/state/HookMirror.java',
         'app/src/main/java/dev/posedmcp/ipc/BridgeBootstrap.java',
         'app/src/main/java/dev/posedmcp/xposed/HookRegistry.java',
         'app/src/main/java/dev/posedmcp/diagnostics/DiagnosticRedactor.java',
         'app/src/main/java/dev/posedmcp/xposed/ScopeConcealment.java',
+        'app/src/main/java/dev/posedmcp/xposed/ExtendedConcealment.java',
+        'app/src/main/java/dev/posedmcp/xposed/MountViews.java',
+        'app/src/main/java/dev/posedmcp/xposed/EnvironmentViews.java',
+        'app/src/main/java/dev/posedmcp/xposed/NativeMountConcealment.java',
         'app/src/main/java/dev/posedmcp/xposed/ConcealmentPaths.java',
         'app/src/main/java/dev/posedmcp/xposed/DexPathConcealment.java',
         'app/src/main/java/dev/posedmcp/xposed/FrameworkFileConcealment.java',
+        'app/src/main/java/dev/posedmcp/xposed/NativeFileConcealment.java',
         'app/src/main/java/dev/posedmcp/xposed/ConcealmentPackages.java',
         'app/src/main/java/dev/posedmcp/xposed/PackageConcealment.java',
         'app/src/main/java/dev/posedmcp/xposed/PackageListFilter.java',
@@ -44,6 +51,12 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Package visibility regression failed' }
     & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.DexFilesRegression
     if ($LASTEXITCODE -ne 0) { throw 'Dex and file regression failed' }
+    & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.NativeCompatibilityRegression
+    if ($LASTEXITCODE -ne 0) { throw 'Native compatibility regression failed' }
+    & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.ExtendedConcealmentRegression
+    if ($LASTEXITCODE -ne 0) { throw 'Extended views regression failed' }
+    & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.EnvironmentConcealmentRegression
+    if ($LASTEXITCODE -ne 0) { throw 'Environment and mount regression failed' }
     & "$JavaDirectory/bin/java.exe" -cp ".tools/runtime-test-classes;$classpath" fixture.BootstrapRegression
     if ($LASTEXITCODE -ne 0) { throw 'Bootstrap regression failed' }
     $compiler = (Get-Command gcc -ErrorAction Stop).Source
@@ -70,4 +83,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native package path compilation failed' }
     & ./.tools/runtime-test-classes/package_paths_test.exe
     if ($LASTEXITCODE -ne 0) { throw 'Native package path regression failed' }
+    & $compiler @compilerArgs -std=c11 -Wall -Wextra -Werror tests/mount_command_test.c -o .tools/runtime-test-classes/mount_command_test.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Native mount command compilation failed' }
+    & ./.tools/runtime-test-classes/mount_command_test.exe
+    if ($LASTEXITCODE -ne 0) { throw 'Native mount command regression failed' }
 } finally { Pop-Location }

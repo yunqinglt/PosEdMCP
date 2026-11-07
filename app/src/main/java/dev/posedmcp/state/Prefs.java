@@ -17,6 +17,7 @@ public final class Prefs {
     public static final String FILE = "posedmcp";
 
     private static final String KEY_MCP_PORT = "mcp_port";
+    private static final String KEY_MCP_LAN = "mcp_lan_access";
     private static final String KEY_BRIDGE_PORT = "bridge_port";
     private static final String KEY_MCP_TOKEN = "mcp_token";
     private static final String KEY_BRIDGE_TOKEN = "bridge_token";
@@ -101,6 +102,14 @@ public final class Prefs {
 
     public int mcpPort() {
         return sp.getInt(KEY_MCP_PORT, DEFAULT_MCP_PORT);
+    }
+
+    public boolean mcpLanAccess() { return sp.getBoolean(KEY_MCP_LAN, false); }
+
+    public void setMcpLanAccess(boolean enabled) {
+        if (!sp.edit().putBoolean(KEY_MCP_LAN, enabled).commit()) {
+            throw new IllegalStateException("Could not save MCP network mode");
+        }
     }
 
     public void setMcpPort(int port) {

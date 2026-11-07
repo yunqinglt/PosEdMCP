@@ -59,6 +59,7 @@ static void library_loaded(const char *name, void *handle) {
     (void)name; (void)handle;
     install_filter();
     concealment_install();
+    mount_command_install();
 }
 
 __attribute__((visibility("default"), used))
@@ -67,6 +68,7 @@ NativeOnModuleLoaded native_init(const NativeAPIEntries *entries) {
     if (entries && entries->version >= 1) framework_hook = entries->hook_func;
     pthread_mutex_unlock(&install_lock);
     concealment_hook_api(entries && entries->version >= 1 ? entries->hook_func : NULL);
+    mount_command_hook_api(entries && entries->version >= 1 ? entries->hook_func : NULL);
     // Capture only. Java configures the filter inside an allowed app scope.
     return library_loaded;
 }

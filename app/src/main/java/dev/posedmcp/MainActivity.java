@@ -6,12 +6,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -155,7 +157,11 @@ public class MainActivity extends AppCompatActivity {
         hooksScroll = scrolled(hooksContent);
 
         MaterialToolbar toolbar = new MaterialToolbar(this);
-        toolbar.setTitle(R.string.app_name);
+        if (getResources().getBoolean(R.bool.rootless_build)) {
+            addRootlessTitle(toolbar);
+        } else {
+            toolbar.setTitle(R.string.app_name);
+        }
 
         TabLayout tabs = new TabLayout(this);
         tabs.setTabMode(TabLayout.MODE_FIXED);
@@ -216,6 +222,41 @@ public class MainActivity extends AppCompatActivity {
         // Opening the app is the user asking for the server to be up; there is
         // no other way to start it without adb.
         McpService.start(this);
+    }
+
+    /** A passive build label beside the title, using the current theme palette. */
+    private void addRootlessTitle(MaterialToolbar toolbar) {
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.HORIZONTAL);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView name = new TextView(this);
+        name.setText(R.string.app_name);
+        name.setTextAppearance(com.google.android.material.R.style
+                .TextAppearance_Material3_TitleLarge);
+        name.setSingleLine(true);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        heading.addView(name, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView badge = new TextView(this);
+        badge.setText(R.string.rootless_badge);
+        badge.setTextAppearance(com.google.android.material.R.style
+                .TextAppearance_Material3_LabelMedium);
+        badge.setSingleLine(true);
+        badge.setPadding(dp(10), dp(3), dp(10), dp(3));
+        badge.setTextColor(color(com.google.android.material.R.attr.colorOnSecondaryContainer));
+        GradientDrawable pill = new GradientDrawable();
+        pill.setColor(color(com.google.android.material.R.attr.colorSecondaryContainer));
+        pill.setCornerRadius(dp(100));
+        badge.setBackground(pill);
+        LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        badgeParams.setMarginStart(dp(8));
+        heading.addView(badge, badgeParams);
+        toolbar.addView(heading, new androidx.appcompat.widget.Toolbar.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.START | Gravity.CENTER_VERTICAL));
     }
 
     @Override
@@ -386,6 +427,44 @@ public class MainActivity extends AppCompatActivity {
         concealment.setChecked(policy.optBoolean("concealment", true));
         content.addView(concealment);
         content.addView(body(getString(R.string.scope_concealment_body)));
+        MaterialSwitch nativeFiles = new MaterialSwitch(this);
+        nativeFiles.setText(R.string.scope_native_files);
+        nativeFiles.setChecked(policy.optBoolean("concealment_native_files", false));
+        nativeFiles.setEnabled(concealment.isChecked());
+        content.addView(nativeFiles);
+        content.addView(body(getString(R.string.scope_native_files_body)));
+        MaterialSwitch extended = new MaterialSwitch(this);
+        extended.setText(R.string.scope_extended);
+        extended.setChecked(policy.optBoolean("concealment_extended", false));
+        extended.setEnabled(concealment.isChecked());
+        content.addView(extended);
+        content.addView(body(getString(R.string.scope_extended_body)));
+        EditText targets = new EditText(this);
+        targets.setHint(R.string.scope_extended_targets);
+        targets.setMinLines(2);
+        targets.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        JSONArray selected = policy.optJSONArray("concealment_extended_packages");
+        StringBuilder selectedText = new StringBuilder();
+        if (selected != null) for (int i = 0; i < selected.length(); i++) {
+            if (i > 0) selectedText.append('\n');
+            selectedText.append(selected.optString(i));
+        }
+        targets.setText(selectedText.toString());
+        content.addView(targets);
+        MaterialSwitch nativeMount = new MaterialSwitch(this);
+        nativeMount.setText(R.string.scope_native_mount);
+        nativeMount.setChecked(policy.optBoolean("concealment_native_mount", false));
+        nativeMount.setEnabled(concealment.isChecked() && extended.isChecked());
+        content.addView(nativeMount);
+        content.addView(body(getString(R.string.scope_native_mount_body)));
+        concealment.setOnCheckedChangeListener((button, checked) -> {
+            nativeFiles.setEnabled(checked);
+            extended.setEnabled(checked);
+            nativeMount.setEnabled(checked && extended.isChecked());
+        });
+        extended.setOnCheckedChangeListener((button, checked) ->
+                nativeMount.setEnabled(concealment.isChecked() && checked));
         MaterialSwitch dns = new MaterialSwitch(this);
         dns.setText(R.string.scope_ad_dns);
         dns.setChecked(policy.optBoolean("ad_dns_enabled", false));
@@ -405,9 +484,16 @@ public class MainActivity extends AppCompatActivity {
         domains.setText(text.toString());
         content.addView(domains);
         content.addView(tonalButton(getString(R.string.scope_policy_save), view -> {
+            final String[] selectedPackages;
+            try { selectedPackages = dev.posedmcp.state.PackageTargets.parse(targets.getText().toString()); }
+            catch (IllegalArgumentException error) { targets.setError(error.getMessage()); return; }
             try {
                 String[] rules = dev.posedmcp.state.DomainRules.parse(domains.getText().toString());
                 policy.put("concealment", concealment.isChecked())
+                        .put("concealment_native_files", nativeFiles.isChecked())
+                        .put("concealment_native_mount", nativeMount.isChecked())
+                        .put("concealment_extended", extended.isChecked())
+                        .put("concealment_extended_packages", new JSONArray(selectedPackages))
                         .put("ad_dns_enabled", dns.isChecked()).put("ad_domains", new JSONArray(rules));
                 dev.posedmcp.state.RuntimePolicy.save(this, policy);
                 toast(getString(R.string.scope_policy_saved));
@@ -722,7 +808,7 @@ public class MainActivity extends AppCompatActivity {
                 getString(running ? R.string.value_running : R.string.value_stopped)));
         if (running) {
             statusContent.addView(keyValue(getString(R.string.label_mcp_endpoint),
-                    "http://127.0.0.1:" + service.mcpPort() + "/mcp"));
+                    dev.posedmcp.mcp.EndpointAddresses.urls(service.mcpPort(), prefs.mcpLanAccess()).get(0)));
             statusContent.addView(keyValue(getString(R.string.label_bridge_port),
                     String.valueOf(service.bridgePort())));
             statusContent.addView(keyValue(getString(R.string.label_system_bridge),
@@ -778,8 +864,29 @@ public class MainActivity extends AppCompatActivity {
         statusContent.addView(body(getString(R.string.body_overlay_permission)));
 
         statusContent.addView(section(getString(R.string.section_endpoint)));
-        final String url = "http://127.0.0.1:" + prefs.mcpPort() + "/mcp";
-        statusContent.addView(monoBlock(url));
+        final boolean lan = prefs.mcpLanAccess();
+        final List<String> urls = dev.posedmcp.mcp.EndpointAddresses.urls(prefs.mcpPort(), lan);
+        final String url = urls.get(0);
+        statusContent.addView(monoBlock(String.join("\n", urls)));
+        MaterialButton networkButton = outlinedButton(getString(lan
+                ? R.string.action_mcp_local : R.string.action_mcp_lan), view -> {
+            view.setEnabled(false);
+            new Thread(() -> {
+                String error = null;
+                try {
+                    McpService current = McpService.instance();
+                    if (current == null) prefs.setMcpLanAccess(!lan);
+                    else current.setMcpLanAccess(!lan);
+                } catch (Exception failure) { error = failure.toString(); }
+                final String problem = error;
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    if (problem != null) toast(getString(R.string.mcp_network_failed, problem));
+                    renderStatus();
+                });
+            }, "posedmcp-network-mode").start();
+        });
+        statusContent.addView(networkButton);
         statusContent.addView(caption(getString(R.string.label_bearer_token)));
         statusContent.addView(monoBlock(prefs.mcpToken()));
 
@@ -799,7 +906,8 @@ public class MainActivity extends AppCompatActivity {
         }));
         statusContent.addView(tokenRow);
 
-        statusContent.addView(body(getString(R.string.body_endpoint_localhost, prefs.mcpPort())));
+        statusContent.addView(body(getString(lan ? R.string.body_endpoint_lan
+                : R.string.body_endpoint_localhost, prefs.mcpPort())));
 
         statusContent.addView(section(getString(R.string.section_actions)));
         MaterialButton serviceButton = filledButton(getString(running

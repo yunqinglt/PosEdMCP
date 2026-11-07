@@ -167,6 +167,8 @@ public final class NativeRuntime {
     static native String adDnsStatus();
     static native String configureConcealmentFiles(String[] packages);
     static native String concealmentFilesStatus();
+    static native void configureNativeMount(boolean active);
+    static native String nativeMountStatus();
 
     static native String lastError();
 

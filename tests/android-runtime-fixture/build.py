@@ -36,6 +36,8 @@ run(clang, "--target=aarch64-linux-android31", "-shared", "-fPIC", source / "fix
 with zipfile.ZipFile(out / "unsigned.apk", "a", compression=zipfile.ZIP_STORED) as apk:
     apk.write(out / "dex/classes.dex", "classes.dex")
     apk.write(out / "lib/arm64-v8a/libruntimefixture.so", "lib/arm64-v8a/libruntimefixture.so")
+    apk.writestr("dev/posedmcp/fixture/VisibleMarker.class", b"fixture class resource\n")
+    apk.writestr("fixture/XposedBridge.class", b"ordinary resource control\n")
 run(bt / "zipalign.exe", "-f", "-P", "16", "4", out / "unsigned.apk", out / "aligned.apk")
 run(java / "java.exe", "-jar", bt / "lib/apksigner.jar", "sign", "--ks", args.keystore,
     "--ks-pass", "pass:android", "--key-pass", "pass:android", "--out", out / "fixture.apk",

@@ -80,6 +80,17 @@
     <string name="clip_token">奈何桥 token</string>
     <string name="toast_tokens_rotated">Tokens rotated</string>
     <string name="body_endpoint_localhost">The listener binds to 127.0.0.1 only. To reach it from a PC over USB: adb forward tcp:%1$d tcp:%1$d</string>
+    <string name="action_mcp_lan">Switch to LAN access</string>
+    <string name="action_mcp_local">Switch to device-only access</string>
+    <string name="body_endpoint_lan">Listening on all IPv4 interfaces (0.0.0.0:%1$d). Connect using a network address above and the Bearer token. HTTP is unencrypted; use a trusted network. Switching modes disconnects current MCP clients.</string>
+    <string name="mcp_network_failed">Could not switch network mode: %1$s</string>
+    <string name="scope_native_files">Native file concealment (experimental)</string>
+    <string name="scope_extended">Extended Java concealment (experimental)</string>
+    <string name="scope_extended_body">Off by default. Applies only to the packages below. Filters selected stack, class, PATH, Java property, proc file and mount command views. Save and reopen the target app to compare.</string>
+    <string name="scope_native_mount">Native mount listing (experimental)</string>
+    <string name="scope_native_mount_body">Off by default. Uses the same package list as extended Java concealment. Filters recognized records from native system(\"mount\") output. Requires a supported native hook backend. Close and reopen the app after changing it.</string>
+    <string name="scope_extended_targets">Experimental target packages (one per line)</string>
+    <string name="scope_native_files_body">Off by default. Installs global libc file hooks; these can conflict with native loaders and app protection. Known incompatible apps are skipped. Disable this option if an app stops at startup. After changing it, close and reopen the target app.</string>
 
     <string name="section_actions">ACTIONS</string>
     <string name="action_stop_service">Stop service</string>
@@ -308,7 +319,7 @@ Once it is on, it can be paused here at any time but not deleted - and the rescu
     <string name="scope_policy_title">SCOPED APP POLICIES</string>
     <string name="scope_policy_body">Built-in hooks for third-party apps in the module scope. These are separate from your Hooks library. Save, then restart the affected apps. System apps and the system framework are excluded.</string>
     <string name="scope_concealment">Hide module traces in scoped apps</string>
-    <string name="scope_concealment_body">Hides PosEdMCP, Display, Deploy and common framework managers from package lists, package probes, package-list command output and supported native directory probes. Keeps the scoped app itself visible. Also masks module/zygote stack frames and bridge JAR maps lines. Does not revoke app permissions. Native filtering requires framework support.</string>
+    <string name="scope_concealment_body">Hides PosEdMCP, Display, Deploy and common framework managers from package lists, package probes and package-list command output. Keeps the scoped app itself visible. Also masks module/zygote stack frames, module Dex paths and bridge JAR maps lines. Does not revoke app permissions. Native file filtering needs a separate opt-in and framework support.</string>
     <string name="scope_ad_dns">Filter advertising DNS names</string>
     <string name="scope_ad_dns_body">Filters libc getaddrinfo using your domain rules. Exact domains match only that name; *.example.com matches subdomains only. No built-in domain list. Shared domains may also serve app features. Requires framework native hook support; custom DNS, direct IPs and existing connections are outside this filter.</string>
     <string name="scope_domain_hint">One domain per line, e.g. ads.example.com</string>

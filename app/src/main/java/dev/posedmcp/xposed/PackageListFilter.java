@@ -7,17 +7,23 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
-/** Only recognizes package enumeration commands; never executes or rewrites commands. */
+/** Filters bounded stdout records; never executes or rewrites Java child commands. */
 final class PackageListFilter extends InputStream {
     private final InputStream source;
-    private final String target;
+    private final Predicate<String> hidden;
     private final BooleanSupplier active;
     private byte[] pending = new byte[0];
     private int offset;
+    private boolean continuation;
 
     PackageListFilter(InputStream source, String target, BooleanSupplier active) {
-        this.source = new java.io.BufferedInputStream(source); this.target = target; this.active = active;
+        this(source, active, line -> hiddenLine(line, target));
+    }
+
+    PackageListFilter(InputStream source, BooleanSupplier active, Predicate<String> hidden) {
+        this.source = new java.io.BufferedInputStream(source); this.active = active; this.hidden = hidden;
     }
 
     static boolean command(List<String> args) {
@@ -35,7 +41,7 @@ final class PackageListFilter extends InputStream {
                 && (args.get(start + 1).equals("packages") || args.get(start + 1).equals("package"));
     }
 
-    private static List<String> words(String line) {
+    static List<String> words(String line) {
         List<String> out = new ArrayList<>();
         StringBuilder word = new StringBuilder(); char quote = 0;
         for (int i = 0; i < line.length(); i++) {
@@ -77,7 +83,10 @@ final class PackageListFilter extends InputStream {
             }
             if (line.size() == 0) return false;
             byte[] bytes = line.toByteArray();
-            if (active.getAsBoolean() && hiddenLine(new String(bytes, StandardCharsets.UTF_8), target)) continue;
+            boolean complete = !continuation && (bytes.length < 65536 || bytes[bytes.length - 1] == '\n');
+            continuation = bytes.length == 65536 && bytes[bytes.length - 1] != '\n';
+            if (complete && active.getAsBoolean()
+                    && hidden.test(new String(bytes, StandardCharsets.UTF_8).trim())) continue;
             pending = bytes; offset = 0;
         }
         return true;

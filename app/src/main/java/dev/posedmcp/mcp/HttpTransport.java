@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
@@ -124,16 +125,31 @@ public final class HttpTransport {
     }
 
     private final int port;
+    private final String bindAddress;
     private final Router router;
-    private final Set<Sink> liveSinks = new CopyOnWriteArraySet<>();
+    private final Set<SseSink> liveSinks = new CopyOnWriteArraySet<>();
+    private final Set<Socket> connections = new CopyOnWriteArraySet<>();
 
     private volatile ServerSocket serverSocket;
     private volatile boolean running;
     private volatile Thread acceptThread;
 
     public HttpTransport(int port, Router router) {
+        this(port, "127.0.0.1", router);
+    }
+
+    public HttpTransport(int port, String bindAddress, Router router) {
+        if (!"127.0.0.1".equals(bindAddress) && !"0.0.0.0".equals(bindAddress)) {
+            throw new IllegalArgumentException("Unsupported MCP bind address");
+        }
         this.port = port;
+        this.bindAddress = bindAddress;
         this.router = router;
+    }
+
+    public int localPort() {
+        ServerSocket socket = serverSocket;
+        return socket == null ? port : socket.getLocalPort();
     }
 
     public boolean isRunning() {
@@ -148,15 +164,21 @@ public final class HttpTransport {
         if (running) {
             return;
         }
-        ServerSocket ss = new ServerSocket(port, 32, InetAddress.getByName("127.0.0.1"));
-        ss.setReuseAddress(true);
+        ServerSocket ss = new ServerSocket();
+        try {
+            ss.setReuseAddress(true);
+            ss.bind(new InetSocketAddress(InetAddress.getByName(bindAddress), port), 32);
+        } catch (IOException error) {
+            ss.close();
+            throw error;
+        }
         serverSocket = ss;
         running = true;
-        Thread t = new Thread(this::acceptLoop, "posedmcp-http-accept");
+        Thread t = new Thread(() -> acceptLoop(ss), "posedmcp-http-accept");
         t.setDaemon(true);
         acceptThread = t;
         t.start();
-        Logx.i("MCP endpoint listening on http://127.0.0.1:" + port + "/mcp");
+        Logx.i("MCP endpoint listening on http://" + bindAddress + ":" + localPort() + "/mcp");
     }
 
     public synchronized void stop() {
@@ -169,12 +191,11 @@ public final class HttpTransport {
             } catch (Throwable ignored) {
             }
         }
-        for (Sink sink : liveSinks) {
-            try {
-                sink.send("closed", "{\"reason\":\"server stopping\"}");
-            } catch (Throwable ignored) {
-            }
-        }
+        // Closing sockets also terminates old SSE streams when LAN access is revoked.
+        for (Socket socket : connections) try { socket.close(); } catch (IOException ignored) {}
+        for (SseSink sink : liveSinks) sink.close();
+        connections.clear();
+        liveSinks.clear();
     }
 
     /** Broadcasts a server-initiated notification to every open event stream. */
@@ -188,16 +209,22 @@ public final class HttpTransport {
         }
     }
 
-    private void acceptLoop() {
-        while (running) {
+    private void acceptLoop(ServerSocket listener) {
+        while (running && serverSocket == listener) {
             Socket socket;
             try {
-                socket = serverSocket.accept();
+                socket = listener.accept();
             } catch (Throwable t) {
-                if (running) {
+                if (running && serverSocket == listener) {
                     Logx.w("http accept failed: " + t);
                 }
-                continue;
+                break;
+            }
+            connections.add(socket);
+            if (!running || serverSocket != listener) {
+                connections.remove(socket);
+                try { socket.close(); } catch (IOException ignored) {}
+                break;
             }
             Thread t = new Thread(() -> serve(socket), "posedmcp-http-conn");
             t.setDaemon(true);
@@ -233,6 +260,7 @@ public final class HttpTransport {
         } catch (Throwable t) {
             Logx.w("http connection ended: " + t);
         } finally {
+            connections.remove(socket);
             try {
                 socket.close();
             } catch (Throwable ignored) {

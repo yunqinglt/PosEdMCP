@@ -1,6 +1,6 @@
-# rootless 1.1.8
+# rootless 1.1.9
 
-发布分支 `rootless`，应用版本 `1.1.8-rootless`（versionCode 22），标签 `v1.1.8-rootless`。shell 后端的无 root 回退已经过独立真机回归，LSPatch 完整注入链仍待对应设备验证。
+发布分支 `rootless`，应用版本 `1.1.9-rootless`（versionCode 24），标签 `v1.1.9-rootless`。shell 后端的无 root 回退已经过独立真机回归，LSPatch 完整注入链仍待对应设备验证。
 它与普通构建使用相同包名和签名，安装时会覆盖当前版本，设置保留，不能并排安装。
 
 ## shell 与权限

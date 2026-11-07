@@ -7,14 +7,12 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.json.JSONObject;
 
 /** Keeps Class/Field contracts and filters only module entries in returned dex path views. */
 final class DexPathConcealment {
     private static final Set<String> PATH_FIELDS = Set.of("dexElements", "nativeLibraryDirectories",
             "systemNativeLibraryDirectories", "nativeLibraryPathElements");
-    private static final Set<Field> OBSERVED = ConcurrentHashMap.newKeySet();
     private static volatile boolean enabled;
     private static boolean installed;
     private static int registered, failed;
@@ -24,23 +22,14 @@ final class DexPathConcealment {
         if (!active || installed) return;
         installed = true;
         HookApi api = Framework.hookApi(loader);
-        HookApi.Callback discovery = new HookApi.Callback() {
-            @Override public void after(HookApi.HookParam p) {
-                if (!enabled || p.throwable() != null) return;
-                if (p.result() instanceof Field && pathField((Field) p.result())) OBSERVED.add((Field) p.result());
-                else if (p.result() instanceof Field[]) {
-                    for (Field f : (Field[]) p.result()) if (pathField(f)) OBSERVED.add(f);
-                }
-            }
-        };
-        hook(api, Class.class, "getDeclaredField", new Class<?>[]{String.class}, discovery);
-        hook(api, Class.class, "getDeclaredFields", new Class<?>[0], discovery);
+        // Metadata lookup is untouched. Field.get identifies its declaring class directly;
+        // observing every Class.getDeclaredField call adds hooks without improving the view.
         hook(api, Field.class, "get", new Class<?>[]{Object.class}, new HookApi.Callback() {
             @Override public void after(HookApi.HookParam p) {
                 if (!enabled || p.throwable() != null || p.result() == null
                         || !(p.thisObject() instanceof Field)) return;
                 Field field = (Field) p.thisObject();
-                if (!(OBSERVED.contains(field) || pathField(field)) || !ScopeConcealment.externalCaller()) return;
+                if (!pathField(field) || !ScopeConcealment.externalCaller()) return;
                 p.setResult(ScopeConcealment.internalView(() -> filtered(p.result())));
             }
         });
@@ -98,8 +87,8 @@ final class DexPathConcealment {
     }
     static synchronized JSONObject status() {
         JSONObject out = new JSONObject();
-        try { out.put("enabled", enabled).put("registered", registered).put("failed", failed)
-                .put("observedFields", OBSERVED.size()); } catch (Exception ignored) {}
+        try { out.put("enabled", enabled).put("registered", registered).put("failed", failed); }
+        catch (Exception ignored) {}
         return out;
     }
     private DexPathConcealment() {}

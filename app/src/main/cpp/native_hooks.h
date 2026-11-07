@@ -9,3 +9,5 @@ typedef struct {
 } NativeAPIEntries;
 void concealment_hook_api(HookFunType hook);
 void concealment_install(void);
+void mount_command_hook_api(HookFunType hook);
+void mount_command_install(void);

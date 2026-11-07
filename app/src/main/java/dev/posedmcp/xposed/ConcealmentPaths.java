@@ -16,6 +16,7 @@ final class ConcealmentPaths {
 
     static String normalized(Object value) {
         String path = value instanceof File ? ((File) value).getPath()
+                : value instanceof java.nio.file.Path ? value.toString()
                 : value instanceof String ? (String) value : "";
         if (File.separatorChar == '\\') path = path.replace('\\', '/');
         if (!path.startsWith("/")) return path;

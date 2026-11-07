@@ -32,7 +32,19 @@ the native package-path matcher, including exact package boundaries and relative
 
 Dex/file regressions preserve real Field objects and original typed arrays/lists, filter only
 the returned dex path view, and check exact artifact metadata/open/list callbacks and toggles.
-The runtime suite now passes 148 assertions, including the native framework-path rules.
+The runtime suite now passes 260 assertions, including native opt-in compatibility exclusions,
+load failures and ordinary maps paths that must remain visible. Dex metadata queries are left unhooked.
+The 43 extended-view checks execute actual callbacks for stack snapshots, explicit class loaders,
+resources, NIO bytes/lists/streams, RandomAccessFile position/EOF/errors and exact target lists.
+The caller-sensitive one-argument Class.forName must remain unhooked; tests enforce that exclusion.
+Environment tests cover PATH entries, property defaults, proc mount records, the original Process
+object, separate stderr and pipe-only filtering. The native selector passes through non-listing commands.
+
+Run `powershell -File tests/run-transport.ps1` for the production HTTP transport and endpoint
+address helper against real TCP sockets. It checks loopback isolation, wildcard access, repeated
+mode changes, occupied ports, partial requests and SSE revocation. The current host passes 19
+assertions; LAN-specific checks require a non-loopback IPv4 interface. It does not test MCP
+authorization: verify authenticated and unauthenticated requests separately on device.
 
 The hook suite also runs the bridge Athena preset, checking its Hans importance
 exemption for the bridge and subprocesses, and rejecting similar or unrelated packages.

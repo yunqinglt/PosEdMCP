@@ -10,11 +10,13 @@ Long-term feedback and future ad SDK strategy plans: [development memory](docs/D
 
 Version 1.1.8 adds dex path views and precise framework-file rules to experimental [scope concealment](docs/CONCEALMENT.md). Normal and rootless builds are available; see the [release notes](docs/RELEASE_1.1.8.md) for compatibility and validation limits.
 
+Version 1.1.9 adds optional LAN access and experimental concealment for selected packages. The rootless build shows a Rootless badge. See the [release notes](docs/RELEASE_1.1.9.md) for downloads, validation and known limitations.
+
 An MCP server for an agent running on the Android device itself. An LSPosed module plus a
 root shell, so an agent living *on the phone* can actually operate the phone.
 
-This is not remote control: the server runs on the phone, the agent runs on the phone, and
-the network never leaves `127.0.0.1`.
+The server runs on the phone and listens on loopback by default. The home screen can enable
+[LAN access](docs/COMPATIBILITY_AND_LAN.md) for clients on a trusted local network.
 
 > The app's launcher name is 奈何桥 ("Naihe Bridge"); PosEdMCP is the same thing.
 
@@ -226,11 +228,11 @@ process does not. `device_info`'s `root.diagnostics` says which case you are in.
 
 ## Connecting a client
 
-The server listens on `127.0.0.1:8765`, endpoint `/mcp` (MCP Streamable HTTP), with Bearer
+By default, the server listens on `127.0.0.1:8765`, endpoint `/mcp` (MCP Streamable HTTP), with Bearer
 token authentication.
 
 A client on the same device connects to `http://127.0.0.1:8765/mcp` directly. A client on
-a PC needs `adb forward` first. The agent prompt is
+a PC can use `adb forward` or opt in to LAN access on the phone. The agent prompt is
 [docs/MCP_PROMPT.md](docs/MCP_PROMPT.md). `/health` needs no authentication and is there
 to check liveness.
 
